@@ -9,6 +9,7 @@ group = 'io.opentelemetry'
 version = '0.0.1-SNAPSHOT'
 
 repositories {
+  mavenLocal()
   mavenCentral()
   jcenter()
   // this is only needed for the working against unreleased otel-java snapshots
@@ -21,7 +22,7 @@ repositories {
 }
 
 dependencies {
-  implementation platform("io.opentelemetry:opentelemetry-bom:0.15.0")
+  implementation platform("io.opentelemetry:opentelemetry-bom:0.16.1001")
 
   implementation 'org.springframework.boot:spring-boot-starter-web'
   implementation 'io.opentelemetry:opentelemetry-extension-annotations'
