@@ -5,8 +5,8 @@
 
 package io.opentelemetry.javaagent.instrumentation.log4j.v2_7;
 
-import static io.opentelemetry.instrumentation.api.log.LoggingContextConstants.SAMPLED;
 import static io.opentelemetry.instrumentation.api.log.LoggingContextConstants.SPAN_ID;
+import static io.opentelemetry.instrumentation.api.log.LoggingContextConstants.TRACE_FLAGS;
 import static io.opentelemetry.instrumentation.api.log.LoggingContextConstants.TRACE_ID;
 
 import io.opentelemetry.api.trace.SpanContext;
@@ -40,9 +40,9 @@ public final class SpanDecoratingContextDataInjector implements ContextDataInjec
     }
 
     StringMap newContextData = new SortedArrayStringMap(contextData);
-    newContextData.putValue(TRACE_ID, currentContext.getTraceIdAsHexString());
-    newContextData.putValue(SPAN_ID, currentContext.getSpanIdAsHexString());
-    newContextData.putValue(SAMPLED, Boolean.toString(currentContext.isSampled()));
+    newContextData.putValue(TRACE_ID, currentContext.getTraceId());
+    newContextData.putValue(SPAN_ID, currentContext.getSpanId());
+    newContextData.putValue(TRACE_FLAGS, currentContext.getTraceFlags().asHex());
     return newContextData;
   }
 

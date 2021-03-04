@@ -3,18 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.INTERNAL
-import static io.opentelemetry.api.trace.Span.Kind.SERVER
+import static io.opentelemetry.api.trace.SpanKind.INTERNAL
+import static io.opentelemetry.api.trace.SpanKind.SERVER
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.EXCEPTION
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.PATH_PARAM
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.SUCCESS
 import static java.util.concurrent.TimeUnit.SECONDS
 import static org.junit.Assume.assumeTrue
 
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
+import io.opentelemetry.instrumentation.test.AgentTestTrait
 import io.opentelemetry.instrumentation.test.asserts.TraceAssert
 import io.opentelemetry.instrumentation.test.base.HttpServerTest
 import io.opentelemetry.sdk.trace.data.SpanData
+import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
 import java.util.concurrent.CompletableFuture
 import okhttp3.Call
 import okhttp3.Callback
@@ -24,7 +25,7 @@ import okhttp3.Response
 import spock.lang.Timeout
 import spock.lang.Unroll
 
-abstract class JaxRsHttpServerTest<S> extends HttpServerTest<S> {
+abstract class JaxRsHttpServerTest<S> extends HttpServerTest<S> implements AgentTestTrait {
   @Timeout(10)
   @Unroll
   def "should handle #desc AsyncResponse"() {
@@ -49,10 +50,18 @@ abstract class JaxRsHttpServerTest<S> extends HttpServerTest<S> {
     assert response.code() == statusCode
     assert bodyPredicate(response.body().string())
 
+    def spanCount = 2
+    def hasSendError = asyncCancelHasSendError() && action == "cancel"
+    if (hasSendError) {
+      spanCount++
+    }
     assertTraces(1) {
-      trace(0, 2) {
+      trace(0, spanCount) {
         asyncServerSpan(it, 0, url, statusCode)
         handlerSpan(it, 1, span(0), "asyncOp", isCancelled, isError, errorMessage)
+        if (hasSendError) {
+          sendErrorSpan(it, 2, span(1))
+        }
       }
     }
 
@@ -117,6 +126,10 @@ abstract class JaxRsHttpServerTest<S> extends HttpServerTest<S> {
     true
   }
 
+  boolean asyncCancelHasSendError() {
+    false
+  }
+
   private static boolean shouldTestCompletableStageAsync() {
     Boolean.getBoolean("testLatestDeps")
   }
@@ -176,7 +189,7 @@ abstract class JaxRsHttpServerTest<S> extends HttpServerTest<S> {
         "${SemanticAttributes.HTTP_URL.key}" fullUrl.toString()
         "${SemanticAttributes.HTTP_METHOD.key}" method
         "${SemanticAttributes.HTTP_STATUS_CODE.key}" statusCode
-        "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+        "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
         "${SemanticAttributes.HTTP_USER_AGENT.key}" TEST_USER_AGENT
         "${SemanticAttributes.HTTP_CLIENT_IP.key}" TEST_CLIENT_IP
       }

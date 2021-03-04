@@ -3,19 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.SERVER
+import static io.opentelemetry.instrumentation.test.utils.TraceUtils.basicSpan
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.runUnderTrace
 
 import io.opentelemetry.api.trace.Span
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
+import io.opentelemetry.instrumentation.test.AgentTestTrait
 import io.opentelemetry.instrumentation.test.base.HttpClientTest
-import spock.lang.Ignore
+import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
 import spock.lang.Requires
 import spock.lang.Timeout
+import spock.lang.Unroll
 import sun.net.www.protocol.https.HttpsURLConnectionImpl
 
 @Timeout(5)
-class HttpUrlConnectionTest extends HttpClientTest {
+class HttpUrlConnectionTest extends HttpClientTest implements AgentTestTrait {
 
   static final RESPONSE = "Hello."
   static final STATUS = 200
@@ -42,18 +45,23 @@ class HttpUrlConnectionTest extends HttpClientTest {
   }
 
   @Override
-  boolean testCircularRedirects() {
-    false
+  int maxRedirects() {
+    20
   }
 
-  @Ignore
+  @Override
+  Integer statusOnRedirectError() {
+    return 302
+  }
+
+  @Unroll
   def "trace request with propagation (useCaches: #useCaches)"() {
     setup:
     def url = server.address.resolve("/success").toURL()
     runUnderTrace("someTrace") {
       HttpURLConnection connection = url.openConnection()
       connection.useCaches = useCaches
-      assert activeSpan() != null
+      assert Span.current().getSpanContext().isValid()
       def stream = connection.inputStream
       def lines = stream.readLines()
       stream.close()
@@ -63,7 +71,7 @@ class HttpUrlConnectionTest extends HttpClientTest {
       // call again to ensure the cycling is ok
       connection = url.openConnection()
       connection.useCaches = useCaches
-      assert activeSpan() != null
+      assert Span.current().getSpanContext().isValid()
       // call before input stream to test alternate behavior
       assert connection.getResponseCode() == STATUS
       connection.inputStream
@@ -74,10 +82,8 @@ class HttpUrlConnectionTest extends HttpClientTest {
     }
 
     expect:
-    assertTraces(3) {
-      server.distributedRequestTrace(it, 0, traces[2][2])
-      server.distributedRequestTrace(it, 1, traces[2][1])
-      trace(2, 3) {
+    assertTraces(1) {
+      trace(0, 5) {
         span(0) {
           name "someTrace"
           hasNoParent()
@@ -97,9 +103,18 @@ class HttpUrlConnectionTest extends HttpClientTest {
             "${SemanticAttributes.HTTP_URL.key}" "$url"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" STATUS
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
           }
         }
         span(2) {
+          name "test-http-server"
+          kind SERVER
+          childOf span(1)
+          errored false
+          attributes {
+          }
+        }
+        span(3) {
           name expectedOperationName("GET")
           kind CLIENT
           childOf span(0)
@@ -111,6 +126,15 @@ class HttpUrlConnectionTest extends HttpClientTest {
             "${SemanticAttributes.HTTP_URL.key}" "$url"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" STATUS
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
+          }
+        }
+        span(4) {
+          name "test-http-server"
+          kind SERVER
+          childOf span(3)
+          errored false
+          attributes {
           }
         }
       }
@@ -120,7 +144,6 @@ class HttpUrlConnectionTest extends HttpClientTest {
     useCaches << [false, true]
   }
 
-  @Ignore
   def "trace request without propagation (useCaches: #useCaches)"() {
     setup:
     def url = server.address.resolve("/success").toURL()
@@ -128,7 +151,7 @@ class HttpUrlConnectionTest extends HttpClientTest {
       HttpURLConnection connection = url.openConnection()
       connection.useCaches = useCaches
       connection.addRequestProperty("is-test-server", "false")
-      assert activeSpan() != null
+      assert Span.current().getSpanContext().isValid()
       def stream = connection.inputStream
       connection.inputStream // one more to ensure state is working
       def lines = stream.readLines()
@@ -140,7 +163,7 @@ class HttpUrlConnectionTest extends HttpClientTest {
       connection = url.openConnection()
       connection.useCaches = useCaches
       connection.addRequestProperty("is-test-server", "false")
-      assert activeSpan() != null
+      assert Span.current().getSpanContext().isValid()
       // call before input stream to test alternate behavior
       assert connection.getResponseCode() == STATUS
       stream = connection.inputStream
@@ -171,6 +194,7 @@ class HttpUrlConnectionTest extends HttpClientTest {
             "${SemanticAttributes.HTTP_URL.key}" "$url"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" STATUS
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
           }
         }
         span(2) {
@@ -185,6 +209,7 @@ class HttpUrlConnectionTest extends HttpClientTest {
             "${SemanticAttributes.HTTP_URL.key}" "$url"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" STATUS
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
           }
         }
       }
@@ -194,15 +219,14 @@ class HttpUrlConnectionTest extends HttpClientTest {
     useCaches << [false, true]
   }
 
-  @Ignore
   def "test broken API usage"() {
     setup:
     def url = server.address.resolve("/success").toURL()
-    runUnderTrace("someTrace") {
+    HttpURLConnection connection = runUnderTrace("someTrace") {
       HttpURLConnection connection = url.openConnection()
       connection.setRequestProperty("Connection", "close")
       connection.addRequestProperty("is-test-server", "false")
-      assert activeSpan() != null
+      assert Span.current().getSpanContext().isValid()
       assert connection.getResponseCode() == STATUS
       return connection
     }
@@ -225,22 +249,23 @@ class HttpUrlConnectionTest extends HttpClientTest {
           attributes {
             "${SemanticAttributes.NET_PEER_NAME.key}" "localhost"
             "${SemanticAttributes.NET_PEER_PORT.key}" server.address.port
+            "${SemanticAttributes.NET_TRANSPORT.key}" "IP.TCP"
             "${SemanticAttributes.HTTP_URL.key}" "$url"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" STATUS
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
           }
         }
       }
     }
 
     cleanup:
-    conn.disconnect()
+    connection.disconnect()
 
     where:
     iteration << (1..10)
   }
 
-  @Ignore
   def "test post request"() {
     setup:
     def url = server.address.resolve("/success").toURL()
@@ -266,9 +291,8 @@ class HttpUrlConnectionTest extends HttpClientTest {
     }
 
     expect:
-    assertTraces(2) {
-      server.distributedRequestTrace(it, 0, traces[1][1])
-      trace(1, 2) {
+    assertTraces(1) {
+      trace(0, 3) {
         span(0) {
           name "someTrace"
           hasNoParent()
@@ -282,15 +306,48 @@ class HttpUrlConnectionTest extends HttpClientTest {
           childOf span(0)
           errored false
           attributes {
+            "${SemanticAttributes.NET_TRANSPORT.key}" "IP.TCP"
             "${SemanticAttributes.NET_PEER_NAME.key}" "localhost"
             "${SemanticAttributes.NET_PEER_PORT.key}" server.address.port
             "${SemanticAttributes.HTTP_URL.key}" "$url"
             "${SemanticAttributes.HTTP_METHOD.key}" "POST"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" STATUS
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
+          }
+        }
+        span(2) {
+          name "test-http-server"
+          kind SERVER
+          childOf span(1)
+          errored false
+          attributes {
           }
         }
       }
     }
+  }
+
+  def "error span"() {
+    def uri = server.address.resolve("/error")
+    when:
+    def url = uri.toURL()
+    runUnderTrace("parent") {
+      doRequest(method, uri)
+    }
+
+    then:
+    def expectedException = new IOException("Server returned HTTP response code: 500 for URL: $url")
+    thrown(IOException)
+    assertTraces(1) {
+      trace(0, 3 + extraClientSpans()) {
+        basicSpan(it, 0, "parent", null, expectedException)
+        clientSpan(it, 1, span(0), method, uri, 500, expectedException)
+        serverSpan(it, 2 + extraClientSpans(), span(1 + extraClientSpans()))
+      }
+    }
+
+    where:
+    method = "GET"
   }
 
   // This test makes no sense on IBM JVM because there is no HttpsURLConnectionImpl class there

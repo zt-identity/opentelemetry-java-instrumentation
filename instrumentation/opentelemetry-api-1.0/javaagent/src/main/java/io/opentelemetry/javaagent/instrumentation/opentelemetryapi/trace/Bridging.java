@@ -9,6 +9,7 @@ import application.io.opentelemetry.api.common.AttributeKey;
 import application.io.opentelemetry.api.common.Attributes;
 import application.io.opentelemetry.api.trace.Span;
 import application.io.opentelemetry.api.trace.SpanContext;
+import application.io.opentelemetry.api.trace.SpanKind;
 import application.io.opentelemetry.api.trace.StatusCode;
 import application.io.opentelemetry.api.trace.TraceState;
 import application.io.opentelemetry.api.trace.TraceStateBuilder;
@@ -47,22 +48,22 @@ public class Bridging {
   public static SpanContext toApplication(io.opentelemetry.api.trace.SpanContext agentContext) {
     if (agentContext.isRemote()) {
       return SpanContext.createFromRemoteParent(
-          agentContext.getTraceIdAsHexString(),
-          agentContext.getSpanIdAsHexString(),
-          agentContext.getTraceFlags(),
+          agentContext.getTraceId(),
+          agentContext.getSpanId(),
+          BridgedTraceFlags.fromAgent(agentContext.getTraceFlags()),
           toApplication(agentContext.getTraceState()));
     } else {
       return SpanContext.create(
-          agentContext.getTraceIdAsHexString(),
-          agentContext.getSpanIdAsHexString(),
-          agentContext.getTraceFlags(),
+          agentContext.getTraceId(),
+          agentContext.getSpanId(),
+          BridgedTraceFlags.fromAgent(agentContext.getTraceFlags()),
           toApplication(agentContext.getTraceState()));
     }
   }
 
   private static TraceState toApplication(io.opentelemetry.api.trace.TraceState agentTraceState) {
     TraceStateBuilder applicationTraceState = TraceState.builder();
-    agentTraceState.forEach(applicationTraceState::set);
+    agentTraceState.forEach(applicationTraceState::put);
     return applicationTraceState.build();
   }
 
@@ -77,9 +78,9 @@ public class Bridging {
     }
   }
 
-  public static io.opentelemetry.api.trace.Span.Kind toAgentOrNull(Span.Kind applicationSpanKind) {
+  public static io.opentelemetry.api.trace.SpanKind toAgentOrNull(SpanKind applicationSpanKind) {
     try {
-      return io.opentelemetry.api.trace.Span.Kind.valueOf(applicationSpanKind.name());
+      return io.opentelemetry.api.trace.SpanKind.valueOf(applicationSpanKind.name());
     } catch (IllegalArgumentException e) {
       log.debug("unexpected span kind: {}", applicationSpanKind.name());
       return null;
@@ -89,15 +90,15 @@ public class Bridging {
   public static io.opentelemetry.api.trace.SpanContext toAgent(SpanContext applicationContext) {
     if (applicationContext.isRemote()) {
       return io.opentelemetry.api.trace.SpanContext.createFromRemoteParent(
-          applicationContext.getTraceIdAsHexString(),
-          applicationContext.getSpanIdAsHexString(),
-          applicationContext.getTraceFlags(),
+          applicationContext.getTraceId(),
+          applicationContext.getSpanId(),
+          BridgedTraceFlags.toAgent(applicationContext.getTraceFlags()),
           toAgent(applicationContext.getTraceState()));
     } else {
       return io.opentelemetry.api.trace.SpanContext.create(
-          applicationContext.getTraceIdAsHexString(),
-          applicationContext.getSpanIdAsHexString(),
-          applicationContext.getTraceFlags(),
+          applicationContext.getTraceId(),
+          applicationContext.getSpanId(),
+          BridgedTraceFlags.toAgent(applicationContext.getTraceFlags()),
           toAgent(applicationContext.getTraceState()));
     }
   }
@@ -157,7 +158,7 @@ public class Bridging {
   private static io.opentelemetry.api.trace.TraceState toAgent(TraceState applicationTraceState) {
     io.opentelemetry.api.trace.TraceStateBuilder agentTraceState =
         io.opentelemetry.api.trace.TraceState.builder();
-    applicationTraceState.forEach(agentTraceState::set);
+    applicationTraceState.forEach(agentTraceState::put);
     return agentTraceState.build();
   }
 

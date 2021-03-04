@@ -5,13 +5,11 @@
 
 package io.opentelemetry.javaagent.instrumentation.jaxrs.v2_0;
 
-import static io.opentelemetry.javaagent.instrumentation.api.WeakMap.Provider.newWeakMap;
-
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.api.servlet.ServletContextPath;
 import io.opentelemetry.instrumentation.api.tracer.BaseTracer;
-import io.opentelemetry.javaagent.instrumentation.api.WeakMap;
+import io.opentelemetry.instrumentation.api.tracer.ServerSpan;
 import io.opentelemetry.javaagent.tooling.ClassHierarchyIterable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -32,16 +30,26 @@ public class JaxRsAnnotationsTracer extends BaseTracer {
     return TRACER;
   }
 
-  private final WeakMap<Class<?>, Map<Method, String>> spanNames = newWeakMap();
+  private final ClassValue<Map<Method, String>> spanNames =
+      new ClassValue<Map<Method, String>>() {
+        @Override
+        protected Map<Method, String> computeValue(Class<?> type) {
+          return new ConcurrentHashMap<>();
+        }
+      };
 
-  public Span startSpan(Class<?> target, Method method) {
+  public Context startSpan(Class<?> target, Method method) {
+    return startSpan(Context.current(), target, method);
+  }
+
+  public Context startSpan(Context parentContext, Class<?> target, Method method) {
     // We create span and immediately update its name
     // We do that in order to reuse logic inside updateSpanNames method, which is used externally as
     // well.
-    Context context = Context.current();
-    Span span = tracer.spanBuilder("jax-rs.request").setParent(context).startSpan();
-    updateSpanNames(context, span, BaseTracer.getCurrentServerSpan(context), target, method);
-    return span;
+    Span span = tracer.spanBuilder("jax-rs.request").setParent(parentContext).startSpan();
+    updateSpanNames(
+        parentContext, span, ServerSpan.fromContextOrNull(parentContext), target, method);
+    return parentContext.with(span);
   }
 
   public void updateSpanNames(
@@ -69,14 +77,6 @@ public class JaxRsAnnotationsTracer extends BaseTracer {
    */
   private String getPathSpanName(Class<?> target, Method method) {
     Map<Method, String> classMap = spanNames.get(target);
-
-    if (classMap == null) {
-      spanNames.putIfAbsent(target, new ConcurrentHashMap<>());
-      classMap = spanNames.get(target);
-      // classMap should not be null at this point because we have a
-      // strong reference to target and don't manually clear the map.
-    }
-
     String spanName = classMap.get(method);
     if (spanName == null) {
       String httpMethod = null;
@@ -194,6 +194,6 @@ public class JaxRsAnnotationsTracer extends BaseTracer {
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.jaxrs";
+    return "io.opentelemetry.javaagent.jaxrs-2.0-common";
   }
 }

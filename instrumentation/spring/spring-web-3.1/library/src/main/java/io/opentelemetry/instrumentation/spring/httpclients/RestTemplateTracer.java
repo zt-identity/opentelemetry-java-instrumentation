@@ -7,7 +7,7 @@ package io.opentelemetry.instrumentation.spring.httpclients;
 
 import static io.opentelemetry.instrumentation.spring.httpclients.HttpHeadersInjectAdapter.SETTER;
 
-import io.opentelemetry.context.propagation.TextMapPropagator.Setter;
+import io.opentelemetry.context.propagation.TextMapSetter;
 import io.opentelemetry.instrumentation.api.tracer.HttpClientTracer;
 import java.io.IOException;
 import java.net.URI;
@@ -54,12 +54,12 @@ class RestTemplateTracer extends HttpClientTracer<HttpRequest, HttpHeaders, Clie
   }
 
   @Override
-  protected Setter<HttpHeaders> getSetter() {
+  protected TextMapSetter<HttpHeaders> getSetter() {
     return SETTER;
   }
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.spring-web";
+    return "io.opentelemetry.javaagent.spring-web-3.1";
   }
 }

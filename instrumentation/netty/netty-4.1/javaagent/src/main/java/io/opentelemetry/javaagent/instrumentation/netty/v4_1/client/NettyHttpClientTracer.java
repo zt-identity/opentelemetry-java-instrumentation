@@ -6,17 +6,16 @@
 package io.opentelemetry.javaagent.instrumentation.netty.v4_1.client;
 
 import static io.netty.handler.codec.http.HttpHeaderNames.HOST;
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT;
+import static io.opentelemetry.api.trace.SpanKind.CLIENT;
 import static io.opentelemetry.javaagent.instrumentation.netty.v4_1.client.NettyResponseInjectAdapter.SETTER;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
-import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.context.propagation.TextMapSetter;
 import io.opentelemetry.instrumentation.api.tracer.HttpClientTracer;
 import io.opentelemetry.instrumentation.api.tracer.utils.NetPeerUtils;
 import java.net.InetSocketAddress;
@@ -43,9 +42,7 @@ public class NettyHttpClientTracer
     NetPeerUtils.INSTANCE.setNetPeer(span, (InetSocketAddress) ctx.channel().remoteAddress());
 
     Context context = withClientSpan(parentContext, span);
-    GlobalOpenTelemetry.getPropagators()
-        .getTextMapPropagator()
-        .inject(context, request.headers(), SETTER);
+    inject(context, request.headers(), SETTER);
     return context;
   }
 
@@ -85,7 +82,7 @@ public class NettyHttpClientTracer
   }
 
   @Override
-  protected TextMapPropagator.Setter<HttpHeaders> getSetter() {
+  protected TextMapSetter<HttpHeaders> getSetter() {
     return SETTER;
   }
 
@@ -118,6 +115,6 @@ public class NettyHttpClientTracer
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.netty";
+    return "io.opentelemetry.javaagent.netty-4.1";
   }
 }

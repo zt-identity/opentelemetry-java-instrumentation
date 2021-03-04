@@ -7,15 +7,20 @@ package io.opentelemetry.instrumentation.awslambda.v1_0
 
 import com.amazonaws.services.lambda.runtime.Context
 import com.amazonaws.services.lambda.runtime.RequestHandler
-import io.opentelemetry.instrumentation.test.InstrumentationTestTrait
+import io.opentelemetry.instrumentation.test.LibraryTestTrait
+import io.opentelemetry.sdk.OpenTelemetrySdk
 
-class AwsLambdaTest extends AbstractAwsLambdaRequestHandlerTest implements InstrumentationTestTrait {
+class AwsLambdaTest extends AbstractAwsLambdaRequestHandlerTest implements LibraryTestTrait {
 
   def cleanup() {
     assert forceFlushCalled()
   }
 
   static class TestRequestHandler extends TracingRequestHandler<String, String> {
+
+    TestRequestHandler(OpenTelemetrySdk openTelemetrySdk) {
+      super(openTelemetrySdk)
+    }
 
     @Override
     protected String doHandleRequest(String input, Context context) {
@@ -25,6 +30,6 @@ class AwsLambdaTest extends AbstractAwsLambdaRequestHandlerTest implements Instr
 
   @Override
   RequestHandler<String, String> handler() {
-    return new TestRequestHandler()
+    return new TestRequestHandler(testRunner().openTelemetrySdk)
   }
 }

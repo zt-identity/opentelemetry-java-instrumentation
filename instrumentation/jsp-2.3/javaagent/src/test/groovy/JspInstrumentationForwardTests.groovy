@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.SERVER
+import static io.opentelemetry.api.trace.SpanKind.SERVER
 
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.instrumentation.test.utils.OkHttpUtils
 import io.opentelemetry.instrumentation.test.utils.PortUtils
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
@@ -19,7 +19,7 @@ import org.apache.jasper.JasperException
 import spock.lang.Shared
 import spock.lang.Unroll
 
-class JspInstrumentationForwardTests extends AgentTestRunner {
+class JspInstrumentationForwardTests extends AgentInstrumentationSpecification {
 
   @Shared
   int port
@@ -80,7 +80,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 5) {
+      trace(0, 6) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/$forwardFromFileName"
@@ -92,7 +92,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/$forwardFromFileName"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -116,6 +116,11 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
         }
         span(3) {
           childOf span(2)
+          name "ApplicationDispatcher.forward"
+          errored false
+        }
+        span(4) {
+          childOf span(3)
           name "Compile /$forwardDestFileName"
           errored false
           attributes {
@@ -123,8 +128,8 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
           }
         }
-        span(4) {
-          childOf span(2)
+        span(5) {
+          childOf span(3)
           name "Render /$forwardDestFileName"
           errored false
           attributes {
@@ -155,7 +160,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 3) {
+      trace(0, 4) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/forwards/forwardToHtml.jsp"
@@ -167,7 +172,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/forwards/forwardToHtml.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -189,6 +194,11 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.requestURL" reqUrl
           }
         }
+        span(3) {
+          childOf span(2)
+          name "ApplicationDispatcher.forward"
+          errored false
+        }
       }
     }
     res.code() == 200
@@ -207,7 +217,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 9) {
+      trace(0, 12) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/forwards/forwardToIncludeMulti.jsp"
@@ -219,7 +229,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/forwards/forwardToIncludeMulti.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -243,6 +253,11 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
         }
         span(3) {
           childOf span(2)
+          name "ApplicationDispatcher.forward"
+          errored false
+        }
+        span(4) {
+          childOf span(3)
           name "Compile /includes/includeMulti.jsp"
           errored false
           attributes {
@@ -250,8 +265,8 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
           }
         }
-        span(4) {
-          childOf span(2)
+        span(5) {
+          childOf span(3)
           name "Render /includes/includeMulti.jsp"
           errored false
           attributes {
@@ -259,26 +274,13 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.requestURL" baseUrl + "/includes/includeMulti.jsp"
           }
         }
-        span(5) {
-          childOf span(4)
-          name "Compile /common/javaLoopH2.jsp"
-          errored false
-          attributes {
-            "jsp.classFQCN" "org.apache.jsp.common.javaLoopH2_jsp"
-            "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
-          }
-        }
         span(6) {
-          childOf span(4)
-          name "Render /common/javaLoopH2.jsp"
+          childOf span(5)
+          name "ApplicationDispatcher.include"
           errored false
-          attributes {
-            "jsp.forwardOrigin" "/forwards/forwardToIncludeMulti.jsp"
-            "jsp.requestURL" baseUrl + "/includes/includeMulti.jsp"
-          }
         }
         span(7) {
-          childOf span(4)
+          childOf span(6)
           name "Compile /common/javaLoopH2.jsp"
           errored false
           attributes {
@@ -287,7 +289,30 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
           }
         }
         span(8) {
-          childOf span(4)
+          childOf span(6)
+          name "Render /common/javaLoopH2.jsp"
+          errored false
+          attributes {
+            "jsp.forwardOrigin" "/forwards/forwardToIncludeMulti.jsp"
+            "jsp.requestURL" baseUrl + "/includes/includeMulti.jsp"
+          }
+        }
+        span(9) {
+          childOf span(5)
+          name "ApplicationDispatcher.include"
+          errored false
+        }
+        span(10) {
+          childOf span(9)
+          name "Compile /common/javaLoopH2.jsp"
+          errored false
+          attributes {
+            "jsp.classFQCN" "org.apache.jsp.common.javaLoopH2_jsp"
+            "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
+          }
+        }
+        span(11) {
+          childOf span(9)
           name "Render /common/javaLoopH2.jsp"
           errored false
           attributes {
@@ -313,7 +338,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 7) {
+      trace(0, 9) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/forwards/forwardToJspForward.jsp"
@@ -325,7 +350,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/forwards/forwardToJspForward.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -349,6 +374,11 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
         }
         span(3) {
           childOf span(2)
+          name "ApplicationDispatcher.forward"
+          errored false
+        }
+        span(4) {
+          childOf span(3)
           name "Compile /forwards/forwardToSimpleJava.jsp"
           errored false
           attributes {
@@ -356,8 +386,8 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
           }
         }
-        span(4) {
-          childOf span(2)
+        span(5) {
+          childOf span(3)
           name "Render /forwards/forwardToSimpleJava.jsp"
           errored false
           attributes {
@@ -365,8 +395,13 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.requestURL" baseUrl + "/forwards/forwardToSimpleJava.jsp"
           }
         }
-        span(5) {
-          childOf span(4)
+        span(6) {
+          childOf span(5)
+          name "ApplicationDispatcher.forward"
+          errored false
+        }
+        span(7) {
+          childOf span(6)
           name "Compile /common/loop.jsp"
           errored false
           attributes {
@@ -374,8 +409,8 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
           }
         }
-        span(6) {
-          childOf span(4)
+        span(8) {
+          childOf span(6)
           name "Render /common/loop.jsp"
           errored false
           attributes {
@@ -401,7 +436,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 4) {
+      trace(0, 5) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/forwards/forwardToCompileError.jsp"
@@ -414,7 +449,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/forwards/forwardToCompileError.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 500
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -439,6 +474,12 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
         }
         span(3) {
           childOf span(2)
+          name "ApplicationDispatcher.forward"
+          errored true
+          errorEvent(JasperException, String)
+        }
+        span(4) {
+          childOf span(3)
           name "Compile /compileError.jsp"
           errored true
           errorEvent(JasperException, String)
@@ -465,7 +506,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 3) {
+      trace(0, 5) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/forwards/forwardToNonExistent.jsp"
@@ -477,7 +518,7 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/forwards/forwardToNonExistent.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 404
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -498,6 +539,14 @@ class JspInstrumentationForwardTests extends AgentTestRunner {
           attributes {
             "jsp.requestURL" reqUrl
           }
+        }
+        span(3) {
+          childOf span(2)
+          name "ApplicationDispatcher.forward"
+        }
+        span(4) {
+          childOf span(3)
+          name "ResponseFacade.sendError"
         }
       }
     }

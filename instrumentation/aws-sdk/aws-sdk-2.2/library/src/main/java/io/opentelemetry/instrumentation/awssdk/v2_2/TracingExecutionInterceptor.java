@@ -5,17 +5,11 @@
 
 package io.opentelemetry.instrumentation.awssdk.v2_2;
 
-import static io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdk.getContext;
-import static io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkHttpClientTracer.tracer;
-import static io.opentelemetry.instrumentation.awssdk.v2_2.RequestType.ofSdkRequest;
+import static io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkRequestType.DynamoDB;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.Map;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import software.amazon.awssdk.awscore.AwsResponse;
 import software.amazon.awssdk.core.ClientType;
 import software.amazon.awssdk.core.SdkRequest;
@@ -36,54 +30,32 @@ final class TracingExecutionInterceptor implements ExecutionInterceptor {
       new ExecutionAttribute<>(TracingExecutionInterceptor.class.getName() + ".Context");
   static final ExecutionAttribute<Scope> SCOPE_ATTRIBUTE =
       new ExecutionAttribute<>(TracingExecutionInterceptor.class.getName() + ".Scope");
-  static final ExecutionAttribute<RequestType> REQUEST_TYPE_ATTRIBUTE =
-      new ExecutionAttribute<>(TracingExecutionInterceptor.class.getName() + ".RequestType");
+  static final ExecutionAttribute<AwsSdkRequest> AWS_SDK_REQUEST_ATTRIBUTE =
+      new ExecutionAttribute<>(TracingExecutionInterceptor.class.getName() + ".AwsSdkRequest");
 
   static final String COMPONENT_NAME = "java-aws-sdk";
 
-  private static final Map<RequestType, SdkRequestDecorator> TYPE_TO_DECORATOR = mapDecorators();
-  private static final Map<String, String> FIELD_TO_ATTRIBUTE = mapFieldToAttribute();
+  private final AwsSdkHttpClientTracer tracer;
+  private final boolean captureExperimentalSpanAttributes;
+  private final FieldMapper fieldMapper;
 
-  private static Map<RequestType, SdkRequestDecorator> mapDecorators() {
-    Map<RequestType, SdkRequestDecorator> result = new EnumMap<>(RequestType.class);
-    result.put(RequestType.DynamoDB, new DbRequestDecorator());
-    return result;
-  }
-
-  private static Map<String, String> mapFieldToAttribute() {
-    Map<String, String> result = new HashMap<>();
-    result.put("QueueUrl", "aws.queue.url");
-    result.put("Bucket", "aws.bucket.name");
-    result.put("QueueName", "aws.queue.name");
-    result.put("StreamName", "aws.stream.name");
-    result.put("TableName", "aws.table.name");
-    return result;
-  }
-
-  @Nullable
-  private SdkRequestDecorator decorator(ExecutionAttributes executionAttributes) {
-    RequestType type = getTypeFromAttributes(executionAttributes);
-    return TYPE_TO_DECORATOR.get(type);
-  }
-
-  private RequestType getTypeFromAttributes(ExecutionAttributes executionAttributes) {
-    return executionAttributes.getAttribute(REQUEST_TYPE_ATTRIBUTE);
+  TracingExecutionInterceptor(
+      AwsSdkHttpClientTracer tracer, boolean captureExperimentalSpanAttributes) {
+    this.tracer = tracer;
+    this.captureExperimentalSpanAttributes = captureExperimentalSpanAttributes;
+    fieldMapper = new FieldMapper();
   }
 
   @Override
   public void beforeExecution(
       Context.BeforeExecution context, ExecutionAttributes executionAttributes) {
     io.opentelemetry.context.Context parentOtelContext = io.opentelemetry.context.Context.current();
-    if (!tracer().shouldStartSpan(parentOtelContext)) {
+    if (!tracer.shouldStartSpan(parentOtelContext)) {
       return;
     }
     io.opentelemetry.context.Context otelContext =
-        tracer().startSpan(parentOtelContext, executionAttributes);
+        tracer.startSpan(parentOtelContext, executionAttributes);
     executionAttributes.putAttribute(CONTEXT_ATTRIBUTE, otelContext);
-    RequestType type = ofSdkRequest(context.request());
-    if (type != null) {
-      executionAttributes.putAttribute(REQUEST_TYPE_ATTRIBUTE, type);
-    }
     if (executionAttributes
         .getAttribute(SdkExecutionAttribute.CLIENT_TYPE)
         .equals(ClientType.SYNC)) {
@@ -102,7 +74,7 @@ final class TracingExecutionInterceptor implements ExecutionInterceptor {
     }
 
     SdkHttpRequest.Builder builder = context.httpRequest().toBuilder();
-    tracer().inject(otelContext, builder);
+    tracer.inject(otelContext, builder);
     return builder.build();
   }
 
@@ -115,35 +87,42 @@ final class TracingExecutionInterceptor implements ExecutionInterceptor {
     }
 
     Span span = Span.fromContext(otelContext);
-    tracer().onRequest(span, context.httpRequest());
-    SdkRequestDecorator decorator = decorator(executionAttributes);
-    if (decorator != null) {
-      decorator.decorate(span, context.request(), executionAttributes);
+    tracer.onRequest(span, context.httpRequest());
+
+    AwsSdkRequest awsSdkRequest = AwsSdkRequest.ofSdkRequest(context.request());
+    if (awsSdkRequest != null) {
+      executionAttributes.putAttribute(AWS_SDK_REQUEST_ATTRIBUTE, awsSdkRequest);
+      populateRequestAttributes(span, awsSdkRequest, context.request(), executionAttributes);
     }
-    decorateWithGenericRequestData(span, context.request());
-    decorateWithExAttributesData(span, executionAttributes);
+    populateGenericAttributes(span, executionAttributes);
   }
 
-  private void decorateWithGenericRequestData(Span span, SdkRequest request) {
+  private void populateRequestAttributes(
+      Span span,
+      AwsSdkRequest awsSdkRequest,
+      SdkRequest sdkRequest,
+      ExecutionAttributes attributes) {
 
-    RequestType type = ofSdkRequest(request);
-    if (type != null) {
-      for (String field : type.getFields()) {
-        request
-            .getValueForField(field, String.class)
-            .ifPresent(val -> span.setAttribute(FIELD_TO_ATTRIBUTE.get(field), val));
+    fieldMapper.mapToAttributes(sdkRequest, awsSdkRequest, span);
+
+    if (awsSdkRequest.type() == DynamoDB) {
+      span.setAttribute(SemanticAttributes.DB_SYSTEM, "dynamodb");
+      String operation = attributes.getAttribute(SdkExecutionAttribute.OPERATION_NAME);
+      if (operation != null) {
+        span.setAttribute(SemanticAttributes.DB_OPERATION, operation);
       }
     }
   }
 
-  private void decorateWithExAttributesData(Span span, ExecutionAttributes attributes) {
+  private void populateGenericAttributes(Span span, ExecutionAttributes attributes) {
+    if (captureExperimentalSpanAttributes) {
+      String awsServiceName = attributes.getAttribute(SdkExecutionAttribute.SERVICE_NAME);
+      String awsOperation = attributes.getAttribute(SdkExecutionAttribute.OPERATION_NAME);
 
-    String awsServiceName = attributes.getAttribute(SdkExecutionAttribute.SERVICE_NAME);
-    String awsOperation = attributes.getAttribute(SdkExecutionAttribute.OPERATION_NAME);
-
-    span.setAttribute("aws.agent", COMPONENT_NAME);
-    span.setAttribute("aws.service", awsServiceName);
-    span.setAttribute("aws.operation", awsOperation);
+      span.setAttribute("aws.agent", COMPONENT_NAME);
+      span.setAttribute("aws.service", awsServiceName);
+      span.setAttribute("aws.operation", awsOperation);
+    }
   }
 
   @Override
@@ -157,19 +136,26 @@ final class TracingExecutionInterceptor implements ExecutionInterceptor {
     clearAttributes(executionAttributes);
     Span span = Span.fromContext(otelContext);
     onUserAgentHeaderAvailable(span, context.httpRequest());
-    onSdkResponse(span, context.response());
-    tracer().end(otelContext, context.httpResponse());
+    onSdkResponse(span, context.response(), executionAttributes);
+    tracer.end(otelContext, context.httpResponse());
   }
 
   // Certain headers in the request like User-Agent are only available after execution.
   private void onUserAgentHeaderAvailable(Span span, SdkHttpRequest request) {
     span.setAttribute(
-        SemanticAttributes.HTTP_USER_AGENT, tracer().requestHeader(request, "User-Agent"));
+        SemanticAttributes.HTTP_USER_AGENT, tracer.requestHeader(request, "User-Agent"));
   }
 
-  private void onSdkResponse(Span span, SdkResponse response) {
-    if (response instanceof AwsResponse) {
-      span.setAttribute("aws.requestId", ((AwsResponse) response).responseMetadata().requestId());
+  private void onSdkResponse(
+      Span span, SdkResponse response, ExecutionAttributes executionAttributes) {
+    if (captureExperimentalSpanAttributes) {
+      if (response instanceof AwsResponse) {
+        span.setAttribute("aws.requestId", ((AwsResponse) response).responseMetadata().requestId());
+      }
+      AwsSdkRequest sdkRequest = executionAttributes.getAttribute(AWS_SDK_REQUEST_ATTRIBUTE);
+      if (sdkRequest != null) {
+        fieldMapper.mapToAttributes(response, sdkRequest, span);
+      }
     }
   }
 
@@ -178,11 +164,19 @@ final class TracingExecutionInterceptor implements ExecutionInterceptor {
       Context.FailedExecution context, ExecutionAttributes executionAttributes) {
     io.opentelemetry.context.Context otelContext = getContext(executionAttributes);
     clearAttributes(executionAttributes);
-    tracer().endExceptionally(otelContext, context.exception());
+    tracer.endExceptionally(otelContext, context.exception());
   }
 
   private void clearAttributes(ExecutionAttributes executionAttributes) {
     executionAttributes.putAttribute(CONTEXT_ATTRIBUTE, null);
-    executionAttributes.putAttribute(REQUEST_TYPE_ATTRIBUTE, null);
+    executionAttributes.putAttribute(AWS_SDK_REQUEST_ATTRIBUTE, null);
+  }
+
+  /**
+   * Returns the {@link Context} stored in the {@link ExecutionAttributes}, or {@code null} if there
+   * is no operation set.
+   */
+  private static io.opentelemetry.context.Context getContext(ExecutionAttributes attributes) {
+    return attributes.getAttribute(CONTEXT_ATTRIBUTE);
   }
 }

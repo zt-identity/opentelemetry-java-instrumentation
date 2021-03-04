@@ -16,6 +16,7 @@ import io.opentelemetry.javaagent.instrumentation.api.InstrumentationContext;
 import io.opentelemetry.javaagent.instrumentation.api.WeakMap;
 import io.opentelemetry.javaagent.tooling.HelperInjector;
 import io.opentelemetry.javaagent.tooling.InstrumentationModule;
+import io.opentelemetry.javaagent.tooling.TransformSafeLogger;
 import io.opentelemetry.javaagent.tooling.Utils;
 import java.lang.reflect.Method;
 import java.security.ProtectionDomain;
@@ -48,8 +49,6 @@ import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.JavaModule;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * InstrumentationContextProvider which stores context in a field that is injected into a class and
@@ -75,14 +74,8 @@ import org.slf4j.LoggerFactory;
  */
 public class FieldBackedProvider implements InstrumentationContextProvider {
 
-  // IMPORTANT: the logging in this class is performed at TRACE level instead of DEBUG level
-  //
-  // BECAUSE: logging in this class occurs frequently and under class file transform,
-  // which can lead gradle to deadlock sporadically when gradle triggers a class to load
-  // while it is holding a lock, and then (because gradle hijacks System.out),
-  // gradle is called from inside of the class file transform,
-  // and then gradle tries to grab a different lock (and then add multiple threads)
-  private static final Logger log = LoggerFactory.getLogger(FieldBackedProvider.class);
+  private static final TransformSafeLogger log =
+      TransformSafeLogger.getLogger(FieldBackedProvider.class);
 
   /**
    * Note: the value here has to be inside on of the prefixes in
@@ -94,7 +87,7 @@ public class FieldBackedProvider implements InstrumentationContextProvider {
       "io.opentelemetry.javaagent.bootstrap.instrumentation.context.";
 
   private static final String INJECTED_FIELDS_MARKER_CLASS_NAME =
-      Utils.getInternalName(FieldBackedContextStoreAppliedMarker.class.getName());
+      Utils.getInternalName(FieldBackedContextStoreAppliedMarker.class);
 
   private static final Method CONTEXT_GET_METHOD;
   private static final Method GET_CONTEXT_STORE_METHOD;
@@ -111,7 +104,7 @@ public class FieldBackedProvider implements InstrumentationContextProvider {
   }
 
   private static final boolean FIELD_INJECTION_ENABLED =
-      Config.get().getBooleanProperty("otel.javaagent.runtime.context.field.injection", true);
+      Config.get().getBooleanProperty("otel.javaagent.experimental.field-injection.enabled", true);
 
   private final Class<?> instrumenterClass;
   private final ByteBuddy byteBuddy;
@@ -201,8 +194,7 @@ public class FieldBackedProvider implements InstrumentationContextProvider {
               public void visitMethodInsn(
                   int opcode, String owner, String name, String descriptor, boolean isInterface) {
                 pushOpcode(opcode);
-                if (Utils.getInternalName(CONTEXT_GET_METHOD.getDeclaringClass().getName())
-                        .equals(owner)
+                if (Utils.getInternalName(CONTEXT_GET_METHOD.getDeclaringClass()).equals(owner)
                     && CONTEXT_GET_METHOD.getName().equals(name)
                     && Type.getMethodDescriptor(CONTEXT_GET_METHOD).equals(descriptor)) {
                   log.trace("Found context-store access in {}", instrumenterClass.getName());
@@ -220,7 +212,7 @@ public class FieldBackedProvider implements InstrumentationContextProvider {
                     String keyClassName = ((Type) stack[1]).getClassName();
                     TypeDescription contextStoreImplementationClass =
                         getContextStoreImplementation(keyClassName, contextClassName);
-                    if (log.isDebugEnabled()) {
+                    if (log.isTraceEnabled()) {
                       log.trace(
                           "Rewriting context-store map fetch for instrumenter {}: {} -> {}",
                           instrumenterClass.getName(),

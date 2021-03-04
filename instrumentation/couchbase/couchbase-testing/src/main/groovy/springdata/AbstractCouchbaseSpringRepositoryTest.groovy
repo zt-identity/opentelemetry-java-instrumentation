@@ -82,7 +82,8 @@ abstract class AbstractCouchbaseSpringRepositoryTest extends AbstractCouchbaseTe
     and:
     assertTraces(1) {
       trace(0, 1) {
-        assertCouchbaseCall(it, 0, ~/^ViewQuery\(doc\/all\).*/, bucketCouchbase.name())
+        def dbName = bucketCouchbase.name()
+        assertCouchbaseCall(it, 0, dbName, dbName, null, ~/^ViewQuery\(doc\/all\).*/)
       }
     }
   }
@@ -103,9 +104,9 @@ abstract class AbstractCouchbaseSpringRepositoryTest extends AbstractCouchbaseTe
     }
 
     cleanup:
-    TEST_WRITER.clear()
+    clearExportedData()
     repo.deleteAll()
-    TEST_WRITER.waitForTraces(2)
+    ignoreTracesAndClear(2)
   }
 
   def "test save and retrieve"() {
@@ -130,9 +131,9 @@ abstract class AbstractCouchbaseSpringRepositoryTest extends AbstractCouchbaseTe
     }
 
     cleanup:
-    TEST_WRITER.clear()
+    clearExportedData()
     repo.deleteAll()
-    TEST_WRITER.waitForTraces(2)
+    ignoreTracesAndClear(2)
   }
 
   def "test save and update"() {
@@ -157,9 +158,9 @@ abstract class AbstractCouchbaseSpringRepositoryTest extends AbstractCouchbaseTe
     }
 
     cleanup:
-    TEST_WRITER.clear()
+    clearExportedData()
     repo.deleteAll()
-    TEST_WRITER.waitForTraces(2)
+    ignoreTracesAndClear(2)
   }
 
   def "save and delete"() {
@@ -179,9 +180,11 @@ abstract class AbstractCouchbaseSpringRepositoryTest extends AbstractCouchbaseTe
     assertTraces(1) {
       trace(0, 4) {
         basicSpan(it, 0, "someTrace")
-        assertCouchbaseCall(it, 1, "Bucket.upsert", bucketCouchbase.name(), span(0))
-        assertCouchbaseCall(it, 2, "Bucket.remove", bucketCouchbase.name(), span(0))
-        assertCouchbaseCall(it, 3, ~/^ViewQuery\(doc\/all\).*/, bucketCouchbase.name(), span(0))
+
+        def dbName = bucketCouchbase.name()
+        assertCouchbaseCall(it, 1, "Bucket.upsert", dbName, span(0))
+        assertCouchbaseCall(it, 2, "Bucket.remove", dbName, span(0))
+        assertCouchbaseCall(it, 3, dbName, dbName, span(0), ~/^ViewQuery\(doc\/all\).*/)
       }
     }
   }

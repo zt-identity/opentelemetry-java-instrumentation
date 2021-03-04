@@ -10,13 +10,13 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.containers.wait.strategy.WaitStrategy
 
 @AppServer(version = "20.0.0.12", jdk = "8")
+@AppServer(version = "20.0.0.12", jdk = "8-openj9")
 @AppServer(version = "20.0.0.12", jdk = "11")
-@AppServer(version = "20.0.0.12", jdk = "8-jdk-openj9")
-@AppServer(version = "20.0.0.12", jdk = "11-jdk-openj9")
+@AppServer(version = "20.0.0.12", jdk = "11-openj9")
 class LibertySmokeTest extends AppServerTest {
 
   protected String getTargetImage(String jdk, String serverVersion) {
-    "ghcr.io/open-telemetry/java-test-containers:liberty-${serverVersion}-jdk$jdk-20201215.422527843"
+    "ghcr.io/open-telemetry/java-test-containers:liberty-${serverVersion}-jdk$jdk-20210223.592806654"
   }
 
   @Override
@@ -29,12 +29,10 @@ class LibertySmokeTest extends AppServerTest {
   @Override
   protected String getSpanName(String path) {
     switch (path) {
-      case "/app/greeting":
-      case "/app/headers":
-      case "/app/exception":
-      case "/app/asyncgreeting":
-        return path
+      case "/app/hello.txt":
+      case "/app/file-that-does-not-exist":
+        return "HTTP GET"
     }
-    return 'HTTP GET'
+    return super.getSpanName(path)
   }
 }

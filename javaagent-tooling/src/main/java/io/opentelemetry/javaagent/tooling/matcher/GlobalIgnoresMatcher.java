@@ -33,18 +33,18 @@ public class GlobalIgnoresMatcher<T extends TypeDescription>
       Pattern.compile("com\\.mchange\\.v2\\.c3p0\\..*Proxy");
 
   public static <T extends TypeDescription> ElementMatcher.Junction<T> globalIgnoresMatcher(
-      boolean skipAdditionalLibraryMatcher, IgnoreMatcherProvider ignoreMatcherProviders) {
-    return new GlobalIgnoresMatcher<>(skipAdditionalLibraryMatcher, ignoreMatcherProviders);
+      boolean additionalLibraryMatcher, IgnoreMatcherProvider ignoreMatcherProviders) {
+    return new GlobalIgnoresMatcher<>(additionalLibraryMatcher, ignoreMatcherProviders);
   }
 
   private final ElementMatcher<T> additionalLibraryIgnoreMatcher =
       AdditionalLibraryIgnoresMatcher.additionalLibraryIgnoresMatcher();
-  private final boolean skipAdditionalLibraryMatcher;
+  private final boolean additionalLibraryMatcher;
   private final IgnoreMatcherProvider ignoreMatcherProvider;
 
   private GlobalIgnoresMatcher(
-      boolean skipAdditionalLibraryMatcher, IgnoreMatcherProvider ignoreMatcherProvider) {
-    this.skipAdditionalLibraryMatcher = skipAdditionalLibraryMatcher;
+      boolean additionalLibraryMatcher, IgnoreMatcherProvider ignoreMatcherProvider) {
+    this.additionalLibraryMatcher = additionalLibraryMatcher;
     this.ignoreMatcherProvider = ignoreMatcherProvider;
   }
 
@@ -106,7 +106,7 @@ public class GlobalIgnoresMatcher<T extends TypeDescription>
       return true;
     }
 
-    if (name.startsWith("io.opentelemetry.auto.")) {
+    if (name.startsWith("io.opentelemetry.javaagent.")) {
       // FIXME: We should remove this once
       // https://github.com/raphw/byte-buddy/issues/558 is fixed
       if (name.equals("io.opentelemetry.javaagent.instrumentation.api.concurrent.RunnableWrapper")
@@ -144,7 +144,8 @@ public class GlobalIgnoresMatcher<T extends TypeDescription>
       if (name.startsWith("com.sun.messaging.")
           || name.startsWith("com.sun.jersey.api.client")
           || name.startsWith("com.sun.appserv")
-          || name.startsWith("com.sun.faces")) {
+          || name.startsWith("com.sun.faces")
+          || name.startsWith("com.sun.xml.ws")) {
         return false;
       }
 
@@ -170,6 +171,15 @@ public class GlobalIgnoresMatcher<T extends TypeDescription>
       return true;
     }
 
+    // bytecode proxies typically have $$ in their name
+    if (name.contains("$$")) {
+      // scala anonymous classes
+      if (name.contains("$$anon$")) {
+        return false;
+      }
+      return true;
+    }
+
     if (name.contains("$JaxbAccessor")
         || name.contains("CGLIB$$")
         || name.contains("javassist")
@@ -184,7 +194,7 @@ public class GlobalIgnoresMatcher<T extends TypeDescription>
       return true;
     }
 
-    if (!skipAdditionalLibraryMatcher && additionalLibraryIgnoreMatcher.matches(target)) {
+    if (additionalLibraryMatcher && additionalLibraryIgnoreMatcher.matches(target)) {
       return true;
     }
 

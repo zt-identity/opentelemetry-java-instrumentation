@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -18,12 +18,12 @@ import org.springframework.kafka.test.utils.ContainerTestUtils
 import org.springframework.kafka.test.utils.KafkaTestUtils
 import spock.lang.Unroll
 
-abstract class KafkaClientBaseTest extends AgentTestRunner {
+abstract class KafkaClientBaseTest extends AgentInstrumentationSpecification {
 
   protected static final SHARED_TOPIC = "shared.topic"
 
   private static final boolean propagationEnabled = Boolean.parseBoolean(
-    System.getProperty("otel.instrumentation.kafka.client-propagation", "true"))
+    System.getProperty("otel.instrumentation.kafka.client-propagation.enabled", "true"))
 
   @Rule
   KafkaEmbedded embeddedKafka = new KafkaEmbedded(1, true, SHARED_TOPIC)

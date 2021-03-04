@@ -7,9 +7,10 @@ package io.opentelemetry.instrumentation.servlet;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator.Getter;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.instrumentation.api.servlet.AppServerBridge;
 import io.opentelemetry.instrumentation.api.servlet.ServletContextPath;
+import io.opentelemetry.instrumentation.api.servlet.ServletSpanNaming;
 import io.opentelemetry.instrumentation.api.tracer.HttpServerTracer;
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes;
 import java.net.URI;
@@ -25,11 +26,23 @@ public abstract class ServletHttpServerTracer<RESPONSE>
 
   private static final Logger log = LoggerFactory.getLogger(ServletHttpServerTracer.class);
 
-  public Context startSpan(HttpServletRequest request) {
-    Context context = startSpan(request, request, request, getSpanName(request));
+  public Context startSpan(HttpServletRequest request, String spanName) {
+    return startSpan(request, request, request, spanName);
+  }
+
+  @Override
+  protected Context customizeContext(Context context, HttpServletRequest request) {
+    // add context for tracking whether servlet instrumentation has updated
+    // server span
+    context = ServletSpanNaming.init(context);
+    // add context for current request's context path
+    return addServletContextPath(context, request);
+  }
+
+  private static Context addServletContextPath(Context context, HttpServletRequest request) {
     String contextPath = request.getContextPath();
     if (contextPath != null && !contextPath.isEmpty() && !contextPath.equals("/")) {
-      context = context.with(ServletContextPath.CONTEXT_KEY, contextPath);
+      return context.with(ServletContextPath.CONTEXT_KEY, contextPath);
     }
     return context;
   }
@@ -98,14 +111,14 @@ public abstract class ServletHttpServerTracer<RESPONSE>
   @Override
   public void onRequest(Span span, HttpServletRequest request) {
     // we do this e.g. so that servlet containers can use these values in their access logs
-    request.setAttribute("traceId", span.getSpanContext().getTraceIdAsHexString());
-    request.setAttribute("spanId", span.getSpanContext().getSpanIdAsHexString());
+    request.setAttribute("traceId", span.getSpanContext().getTraceId());
+    request.setAttribute("spanId", span.getSpanContext().getSpanId());
 
     super.onRequest(span, request);
   }
 
   @Override
-  protected Getter<HttpServletRequest> getGetter() {
+  protected TextMapGetter<HttpServletRequest> getGetter() {
     return HttpServletRequestGetter.GETTER;
   }
 
@@ -154,23 +167,16 @@ public abstract class ServletHttpServerTracer<RESPONSE>
   }
 
   /**
-   * When server spans are managed by app server instrumentation, servlet must update server span
-   * name only once and only during the first pass through the servlet stack. There are potential
-   * forward and other scenarios, where servlet path may change, but we don't want this to be
-   * reflected in the span name.
+   * When server spans are managed by app server instrumentation we need to add context path of
+   * current request to context if it isn't already added. Servlet instrumentation adds it when it
+   * starts server span.
    */
-  public void updateServerSpanNameOnce(Context attachedContext, HttpServletRequest request) {
-    if (AppServerBridge.shouldUpdateServerSpanName(attachedContext)) {
-      updateSpanName(Span.fromContext(attachedContext), request);
-      AppServerBridge.setServletUpdatedServerSpanName(attachedContext, true);
+  public Context updateContext(Context context, HttpServletRequest request) {
+    String contextPath = context.get(ServletContextPath.CONTEXT_KEY);
+    if (contextPath == null) {
+      context = addServletContextPath(context, request);
     }
-  }
 
-  public void updateSpanName(HttpServletRequest request) {
-    updateSpanName(getServerSpan(request), request);
-  }
-
-  private static void updateSpanName(Span span, HttpServletRequest request) {
-    span.updateName(getSpanName(request));
+    return context;
   }
 }

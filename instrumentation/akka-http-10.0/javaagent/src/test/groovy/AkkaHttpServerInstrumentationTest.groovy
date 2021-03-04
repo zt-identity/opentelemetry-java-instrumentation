@@ -3,14 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import io.opentelemetry.instrumentation.test.AgentTestTrait
 import io.opentelemetry.instrumentation.test.base.HttpServerTest
 
-abstract class AkkaHttpServerInstrumentationTest extends HttpServerTest<Object> {
-
-  @Override
-  boolean testExceptionBody() {
-    false
-  }
+abstract class AkkaHttpServerInstrumentationTest extends HttpServerTest<Object> implements AgentTestTrait {
 
 // FIXME: This doesn't work because we don't support bindAndHandle.
 //  @Override

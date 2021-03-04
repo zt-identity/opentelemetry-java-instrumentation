@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.basicSpan
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.runUnderTrace
 
@@ -11,10 +11,10 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader
 import com.datastax.oss.driver.internal.core.config.typesafe.DefaultDriverConfigLoader
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.instrumentation.test.asserts.TraceAssert
 import io.opentelemetry.sdk.trace.data.SpanData
+import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
 import java.time.Duration
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -22,7 +22,7 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.output.Slf4jLogConsumer
 import spock.lang.Shared
 
-class CassandraClientTest extends AgentTestRunner {
+class CassandraClientTest extends AgentInstrumentationSpecification {
   private static final Logger log = LoggerFactory.getLogger(CassandraClientTest)
 
   @Shared
@@ -53,7 +53,7 @@ class CassandraClientTest extends AgentTestRunner {
     expect:
     assertTraces(1) {
       trace(0, 1) {
-        cassandraSpan(it, 0, expectedStatement, keyspace)
+        cassandraSpan(it, 0, spanName, expectedStatement, operation, keyspace, table)
       }
     }
 
@@ -61,12 +61,12 @@ class CassandraClientTest extends AgentTestRunner {
     session.close()
 
     where:
-    keyspace    | statement                                                                                         | expectedStatement
-    null        | "DROP KEYSPACE IF EXISTS sync_test"                                                               | "DROP KEYSPACE IF EXISTS sync_test"
-    null        | "CREATE KEYSPACE sync_test WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':3}" | "CREATE KEYSPACE sync_test WITH REPLICATION = {?:?, ?:?}"
-    "sync_test" | "CREATE TABLE sync_test.users ( id UUID PRIMARY KEY, name text )"                                 | "CREATE TABLE sync_test.users ( id UUID PRIMARY KEY, name text )"
-    "sync_test" | "INSERT INTO sync_test.users (id, name) values (uuid(), 'alice')"                                 | "INSERT INTO sync_test.users (id, name) values (uuid(), ?)"
-    "sync_test" | "SELECT * FROM users where name = 'alice' ALLOW FILTERING"                                        | "SELECT * FROM users where name = ? ALLOW FILTERING"
+    keyspace    | statement                                                                                         | expectedStatement                                                 | spanName                 | operation | table
+    null        | "DROP KEYSPACE IF EXISTS sync_test"                                                               | "DROP KEYSPACE IF EXISTS sync_test"                               | expectedStatement        | null      | null
+    null        | "CREATE KEYSPACE sync_test WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':3}" | "CREATE KEYSPACE sync_test WITH REPLICATION = {?:?, ?:?}"         | expectedStatement        | null      | null
+    "sync_test" | "CREATE TABLE sync_test.users ( id UUID PRIMARY KEY, name text )"                                 | "CREATE TABLE sync_test.users ( id UUID PRIMARY KEY, name text )" | "sync_test"              | null      | null
+    "sync_test" | "INSERT INTO sync_test.users (id, name) values (uuid(), 'alice')"                                 | "INSERT INTO sync_test.users (id, name) values (uuid(), ?)"       | "INSERT sync_test.users" | "INSERT"  | "users"
+    "sync_test" | "SELECT * FROM users where name = 'alice' ALLOW FILTERING"                                        | "SELECT * FROM users where name = ? ALLOW FILTERING"              | "SELECT sync_test.users" | "SELECT"  | "users"
   }
 
   def "test async"() {
@@ -81,7 +81,7 @@ class CassandraClientTest extends AgentTestRunner {
     assertTraces(1) {
       trace(0, 2) {
         basicSpan(it, 0, "parent")
-        cassandraSpan(it, 1, expectedStatement, keyspace, span(0))
+        cassandraSpan(it, 1, spanName, expectedStatement, operation, keyspace, table, span(0))
       }
     }
 
@@ -89,17 +89,17 @@ class CassandraClientTest extends AgentTestRunner {
     session.close()
 
     where:
-    keyspace     | statement                                                                                          | expectedStatement
-    null         | "DROP KEYSPACE IF EXISTS async_test"                                                               | "DROP KEYSPACE IF EXISTS async_test"
-    null         | "CREATE KEYSPACE async_test WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':3}" | "CREATE KEYSPACE async_test WITH REPLICATION = {?:?, ?:?}"
-    "async_test" | "CREATE TABLE async_test.users ( id UUID PRIMARY KEY, name text )"                                 | "CREATE TABLE async_test.users ( id UUID PRIMARY KEY, name text )"
-    "async_test" | "INSERT INTO async_test.users (id, name) values (uuid(), 'alice')"                                 | "INSERT INTO async_test.users (id, name) values (uuid(), ?)"
-    "async_test" | "SELECT * FROM users where name = 'alice' ALLOW FILTERING"                                         | "SELECT * FROM users where name = ? ALLOW FILTERING"
+    keyspace     | statement                                                                                          | expectedStatement                                                  | spanName                  | operation | table
+    null         | "DROP KEYSPACE IF EXISTS async_test"                                                               | "DROP KEYSPACE IF EXISTS async_test"                               | expectedStatement         | null      | null
+    null         | "CREATE KEYSPACE async_test WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':3}" | "CREATE KEYSPACE async_test WITH REPLICATION = {?:?, ?:?}"         | expectedStatement         | null      | null
+    "async_test" | "CREATE TABLE async_test.users ( id UUID PRIMARY KEY, name text )"                                 | "CREATE TABLE async_test.users ( id UUID PRIMARY KEY, name text )" | "async_test"              | null      | null
+    "async_test" | "INSERT INTO async_test.users (id, name) values (uuid(), 'alice')"                                 | "INSERT INTO async_test.users (id, name) values (uuid(), ?)"       | "INSERT async_test.users" | "INSERT"  | "users"
+    "async_test" | "SELECT * FROM users where name = 'alice' ALLOW FILTERING"                                         | "SELECT * FROM users where name = ? ALLOW FILTERING"               | "SELECT async_test.users" | "SELECT"  | "users"
   }
 
-  def cassandraSpan(TraceAssert trace, int index, String statement, String keyspace, Object parentSpan = null, Throwable exception = null) {
+  def cassandraSpan(TraceAssert trace, int index, String spanName, String statement, String operation, String keyspace, String table, Object parentSpan = null) {
     trace.span(index) {
-      name statement
+      name spanName
       kind CLIENT
       if (parentSpan == null) {
         hasNoParent()
@@ -113,6 +113,15 @@ class CassandraClientTest extends AgentTestRunner {
         "$SemanticAttributes.DB_SYSTEM.key" "cassandra"
         "$SemanticAttributes.DB_NAME.key" keyspace
         "$SemanticAttributes.DB_STATEMENT.key" statement
+        "$SemanticAttributes.DB_OPERATION.key" operation
+        "$SemanticAttributes.DB_CASSANDRA_CONSISTENCY_LEVEL.key" "LOCAL_ONE"
+        "$SemanticAttributes.DB_CASSANDRA_COORDINATOR_DC.key" "datacenter1"
+        "$SemanticAttributes.DB_CASSANDRA_COORDINATOR_ID.key" String
+        "$SemanticAttributes.DB_CASSANDRA_IDEMPOTENCE.key" Boolean
+        "$SemanticAttributes.DB_CASSANDRA_PAGE_SIZE.key" 5000
+        "$SemanticAttributes.DB_CASSANDRA_SPECULATIVE_EXECUTION_COUNT.key" 0
+        // the SqlStatementSanitizer can't handle CREATE statements yet
+        "$SemanticAttributes.DB_CASSANDRA_TABLE.key" table
       }
     }
   }

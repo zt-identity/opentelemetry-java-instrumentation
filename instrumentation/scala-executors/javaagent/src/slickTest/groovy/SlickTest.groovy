@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
 
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
 
-class SlickTest extends AgentTestRunner {
+class SlickTest extends AgentInstrumentationSpecification {
 
   // Can't be @Shared, otherwise the work queue is initialized before the instrumentation is applied
   def database = new SlickUtils()
@@ -39,8 +39,9 @@ class SlickTest extends AgentTestRunner {
             "$SemanticAttributes.DB_SYSTEM.key" "h2"
             "$SemanticAttributes.DB_NAME.key" SlickUtils.Db()
             "$SemanticAttributes.DB_USER.key" SlickUtils.Username()
-            "$SemanticAttributes.DB_STATEMENT.key" "SELECT ?"
             "$SemanticAttributes.DB_CONNECTION_STRING.key" "h2:mem:"
+            "$SemanticAttributes.DB_STATEMENT.key" "SELECT ?"
+            "$SemanticAttributes.DB_OPERATION.key" "SELECT"
           }
         }
       }

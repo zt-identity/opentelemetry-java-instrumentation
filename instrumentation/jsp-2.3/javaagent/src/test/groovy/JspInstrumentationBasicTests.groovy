@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.SERVER
+import static io.opentelemetry.api.trace.SpanKind.SERVER
 
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.instrumentation.test.utils.OkHttpUtils
 import io.opentelemetry.instrumentation.test.utils.PortUtils
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
@@ -22,7 +22,7 @@ import spock.lang.Shared
 import spock.lang.Unroll
 
 //TODO should this be HttpServerTest?
-class JspInstrumentationBasicTests extends AgentTestRunner {
+class JspInstrumentationBasicTests extends AgentInstrumentationSpecification {
 
   @Shared
   int port
@@ -94,7 +94,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/$jspFileName"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -153,7 +153,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/getQuery.jsp?$queryString"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -209,7 +209,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/post.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "POST"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -274,7 +274,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/$jspFileName"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 500
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -332,7 +332,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 3) {
+      trace(0, 4) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/includes/includeHtml.jsp"
@@ -344,7 +344,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/includes/includeHtml.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -366,6 +366,11 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "jsp.requestURL" reqUrl
           }
         }
+        span(3) {
+          childOf span(2)
+          name "ApplicationDispatcher.include"
+          errored false
+        }
       }
     }
     res.code() == 200
@@ -384,7 +389,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
 
     then:
     assertTraces(1) {
-      trace(0, 7) {
+      trace(0, 9) {
         span(0) {
           hasNoParent()
           name "/$jspWebappContext/includes/includeMulti.jsp"
@@ -396,7 +401,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/includes/includeMulti.jsp"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -420,6 +425,11 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
         }
         span(3) {
           childOf span(2)
+          name "ApplicationDispatcher.include"
+          errored false
+        }
+        span(4) {
+          childOf span(3)
           name "Compile /common/javaLoopH2.jsp"
           errored false
           attributes {
@@ -427,16 +437,21 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
           }
         }
-        span(4) {
-          childOf span(2)
+        span(5) {
+          childOf span(3)
           name "Render /common/javaLoopH2.jsp"
           errored false
           attributes {
             "jsp.requestURL" reqUrl
           }
         }
-        span(5) {
+        span(6) {
           childOf span(2)
+          name "ApplicationDispatcher.include"
+          errored false
+        }
+        span(7) {
+          childOf span(6)
           name "Compile /common/javaLoopH2.jsp"
           errored false
           attributes {
@@ -444,8 +459,8 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "jsp.compiler" "org.apache.jasper.compiler.JDTCompiler"
           }
         }
-        span(6) {
-          childOf span(2)
+        span(8) {
+          childOf span(6)
           name "Render /common/javaLoopH2.jsp"
           errored false
           attributes {
@@ -483,7 +498,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/$jspFileName"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 500
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }
@@ -525,7 +540,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
       trace(0, 1) {
         span(0) {
           hasNoParent()
-          name "/$jspWebappContext/$staticFile"
+          name "/$jspWebappContext/*"
           kind SERVER
           errored false
           attributes {
@@ -534,7 +549,7 @@ class JspInstrumentationBasicTests extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "http://localhost:$port/$jspWebappContext/$staticFile"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }

@@ -6,12 +6,16 @@
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.AUTH_REQUIRED
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.ERROR
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.EXCEPTION
+import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.NOT_FOUND
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.QUERY_PARAM
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.REDIRECT
 import static io.opentelemetry.instrumentation.test.base.HttpServerTest.ServerEndpoint.SUCCESS
 import static org.junit.Assume.assumeTrue
 
+import io.opentelemetry.instrumentation.test.asserts.TraceAssert
 import java.nio.file.Files
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import javax.servlet.Servlet
 import javax.servlet.ServletException
 import org.apache.catalina.AccessLog
@@ -31,13 +35,31 @@ import spock.lang.Unroll
 abstract class TomcatServlet3Test extends AbstractServlet3Test<Tomcat, Context> {
 
   @Override
-  boolean testExceptionBody() {
-    return false
+  Class<?> expectedExceptionClass() {
+    ServletException
   }
 
   @Override
-  Class<?> expectedExceptionClass() {
-    ServletException
+  boolean hasResponseSpan(ServerEndpoint endpoint) {
+    endpoint == NOT_FOUND || super.hasResponseSpan(endpoint)
+  }
+
+  @Override
+  void responseSpan(TraceAssert trace, int index, Object parent, String method, ServerEndpoint endpoint) {
+    switch (endpoint) {
+      case NOT_FOUND:
+        sendErrorSpan(trace, index, parent)
+        break
+    }
+    super.responseSpan(trace, index, parent, method, endpoint)
+  }
+
+  @Override
+  String expectedServerSpanName(ServerEndpoint endpoint) {
+    if (endpoint == NOT_FOUND) {
+      return getContextPath() + "/*"
+    }
+    return super.expectedServerSpanName(endpoint)
   }
 
   @Shared
@@ -118,14 +140,31 @@ abstract class TomcatServlet3Test extends AbstractServlet3Test<Tomcat, Context> 
 
     and:
     assertTraces(count) {
+      accessLogValue.waitForLoggedIds(count)
       assert accessLogValue.loggedIds.size() == count
       def loggedTraces = accessLogValue.loggedIds*.first
       def loggedSpans = accessLogValue.loggedIds*.second
 
+      def expectedCount = 2
+      if (hasIncludeSpan()) {
+        expectedCount++
+      }
+      if (hasForwardSpan()) {
+        expectedCount++
+      }
       (0..count - 1).each {
-        trace(it, 2) {
+        trace(it, expectedCount) {
           serverSpan(it, 0, null, null, "GET", SUCCESS.body.length())
-          controllerSpan(it, 1, span(0))
+          def controllerIndex = 1
+          if (hasIncludeSpan()) {
+            includeSpan(it, 1, span(0))
+            controllerIndex++
+          }
+          if (hasForwardSpan()) {
+            forwardSpan(it, 1, span(0))
+            controllerIndex++
+          }
+          controllerSpan(it, controllerIndex, span(controllerIndex - 1))
         }
 
         assert loggedTraces.contains(traces[it][0].traceId)
@@ -150,12 +189,30 @@ abstract class TomcatServlet3Test extends AbstractServlet3Test<Tomcat, Context> 
     response.body().string() == ERROR.body
 
     and:
+    def spanCount = 2
+    if (errorEndpointUsesSendError()) {
+      spanCount++
+    }
+    if (hasForwardSpan()) {
+      spanCount++
+    }
     assertTraces(1) {
-      trace(0, 2) {
+      trace(0, spanCount) {
         serverSpan(it, 0, null, null, method, response.body().contentLength(), ERROR)
-        controllerSpan(it, 1, span(0))
+        def spanIndex = 1
+        if (hasForwardSpan()) {
+          forwardSpan(it, spanIndex, span(spanIndex - 1))
+          spanIndex++
+        }
+        controllerSpan(it, spanIndex, span(spanIndex - 1))
+        spanIndex++
+        if (errorEndpointUsesSendError()) {
+          sendErrorSpan(it, spanIndex, span(spanIndex - 1))
+          spanIndex++
+        }
       }
 
+      accessLogValue.waitForLoggedIds(1)
       def (String traceId, String spanId) = accessLogValue.loggedIds[0]
       assert traces[0][0].traceId == traceId
       assert traces[0][0].spanId == spanId
@@ -215,15 +272,34 @@ class ErrorHandlerValve extends ErrorReportValve {
 }
 
 class TestAccessLogValve extends ValveBase implements AccessLog {
-  List<Tuple2<String, String>> loggedIds = []
+  final List<Tuple2<String, String>> loggedIds = []
 
   TestAccessLogValve() {
     super(true)
   }
 
   void log(Request request, Response response, long time) {
-    loggedIds.add(new Tuple2(request.getAttribute("traceId"),
-      request.getAttribute("spanId")))
+    synchronized (loggedIds) {
+      loggedIds.add(new Tuple2(request.getAttribute("traceId"),
+        request.getAttribute("spanId")))
+      loggedIds.notifyAll()
+    }
+  }
+
+  void waitForLoggedIds(int expected) {
+    def timeout = TimeUnit.SECONDS.toMillis(20)
+    def startTime = System.currentTimeMillis()
+    def endTime = startTime + timeout
+    def toWait = timeout
+    synchronized (loggedIds) {
+      while (loggedIds.size() < expected && toWait > 0) {
+        loggedIds.wait(toWait)
+        toWait = endTime - System.currentTimeMillis()
+      }
+      if (toWait <= 0) {
+        throw new TimeoutException("Timeout waiting for " + expected + " access log ids, got " + loggedIds.size())
+      }
+    }
   }
 
   @Override
@@ -254,6 +330,11 @@ class TomcatServlet3TestAsync extends TomcatServlet3Test {
   @Override
   Class<Servlet> servlet() {
     TestServlet3.Async
+  }
+
+  @Override
+  boolean errorEndpointUsesSendError() {
+    false
   }
 
   @Override
@@ -289,6 +370,11 @@ class TomcatServlet3TestForward extends TomcatDispatchTest {
   }
 
   @Override
+  boolean hasForwardSpan() {
+    true
+  }
+
+  @Override
   protected void setupServlets(Context context) {
     super.setupServlets(context)
 
@@ -320,6 +406,11 @@ class TomcatServlet3TestInclude extends TomcatDispatchTest {
   @Override
   boolean testError() {
     false
+  }
+
+  @Override
+  boolean hasIncludeSpan() {
+    true
   }
 
   @Override
@@ -377,6 +468,11 @@ class TomcatServlet3TestDispatchAsync extends TomcatDispatchTest {
     addServlet(context, "/dispatch" + REDIRECT.path, TestServlet3.DispatchAsync)
     addServlet(context, "/dispatch" + AUTH_REQUIRED.path, TestServlet3.DispatchAsync)
     addServlet(context, "/dispatch/recursive", TestServlet3.DispatchRecursive)
+  }
+
+  @Override
+  boolean errorEndpointUsesSendError() {
+    false
   }
 
   @Override

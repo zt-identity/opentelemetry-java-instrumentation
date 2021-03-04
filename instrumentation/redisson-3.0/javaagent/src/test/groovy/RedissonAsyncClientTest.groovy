@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
 
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.instrumentation.test.utils.PortUtils
+import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
 import java.util.concurrent.TimeUnit
 import org.redisson.Redisson
 import org.redisson.api.RBucket
@@ -16,10 +16,11 @@ import org.redisson.api.RList
 import org.redisson.api.RSet
 import org.redisson.api.RedissonClient
 import org.redisson.config.Config
+import org.redisson.config.SingleServerConfig
 import redis.embedded.RedisServer
 import spock.lang.Shared
 
-class RedissonAsyncClientTest extends AgentTestRunner {
+class RedissonAsyncClientTest extends AgentInstrumentationSpecification {
 
   @Shared
   int port = PortUtils.randomOpenPort()
@@ -52,9 +53,12 @@ class RedissonAsyncClientTest extends AgentTestRunner {
 
   def setup() {
     Config config = new Config()
-    config.useSingleServer().setAddress(address)
+    SingleServerConfig singleServerConfig = config.useSingleServer()
+    singleServerConfig.setAddress(address)
+    // disable connection ping if it exists
+    singleServerConfig.metaClass.getMetaMethod("setPingConnectionInterval", int)?.invoke(singleServerConfig, 0)
     redisson = Redisson.create(config)
-    TEST_WRITER.clear()
+    clearExportedData()
   }
 
   def "test future set"() {

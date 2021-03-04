@@ -9,11 +9,12 @@ To use it, add the module to your application's runtime classpath and add the ap
 **Maven**
 
 ```xml
+
 <dependencies>
   <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
-    <artifactId>opentelemetry-logback-1.0.0</artifactId>
-    <version>0.8.0-SNAPSHOT</version>
+    <artifactId>opentelemetry-logback-1.0</artifactId>
+    <version>0.17.0-alpha</version>
     <scope>runtime</scope>
   </dependency>
 </dependencies>
@@ -23,7 +24,7 @@ To use it, add the module to your application's runtime classpath and add the ap
 
 ```kotlin
 dependencies {
-  runtimeOnly("io.opentelemetry.instrumentation:opentelemetry-logback-1.0:0.8.0-SNAPSHOT")
+  runtimeOnly("io.opentelemetry.instrumentation:opentelemetry-logback-1.0:0.17.0-alpha")
 }
 ```
 
@@ -34,13 +35,13 @@ dependencies {
 <configuration>
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
-      <pattern>%d{HH:mm:ss.SSS} %X{traceId} %X{spanId} %msg%n</pattern>
+      <pattern>%d{HH:mm:ss.SSS} trace_id=%X{trace_id} span_id=%X{span_id} trace_flags=%X{trace_flags} %msg%n</pattern>
     </encoder>
   </appender>
 
   <!-- Just wrap your logging appender, for example ConsoleAppender, with OpenTelemetryAppender -->
   <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.v1_0.OpenTelemetryAppender">
-    <appender-ref ref="CONSOLE" />
+    <appender-ref ref="CONSOLE"/>
   </appender>
   ...
 </configuration>
@@ -49,6 +50,6 @@ dependencies {
 Logging events will automatically have context information from the span context injected. The
 following attributes are available for use:
 
-- `traceId`
-- `spanId`
-- `traceFlags`
+- `trace_id`
+- `span_id`
+- `trace_flags`

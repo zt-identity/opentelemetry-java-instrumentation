@@ -7,7 +7,7 @@ package io.opentelemetry.javaagent.instrumentation.jaxrsclient.v2_0;
 
 import static io.opentelemetry.javaagent.instrumentation.jaxrsclient.v2_0.InjectAdapter.SETTER;
 
-import io.opentelemetry.context.propagation.TextMapPropagator.Setter;
+import io.opentelemetry.context.propagation.TextMapSetter;
 import io.opentelemetry.instrumentation.api.tracer.HttpClientTracer;
 import java.net.URI;
 import javax.ws.rs.client.ClientRequestContext;
@@ -47,12 +47,12 @@ public class JaxRsClientTracer
   }
 
   @Override
-  protected Setter<ClientRequestContext> getSetter() {
+  protected TextMapSetter<ClientRequestContext> getSetter() {
     return SETTER;
   }
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.jaxrs-client";
+    return "io.opentelemetry.javaagent.jaxrs-client-2.0";
   }
 }

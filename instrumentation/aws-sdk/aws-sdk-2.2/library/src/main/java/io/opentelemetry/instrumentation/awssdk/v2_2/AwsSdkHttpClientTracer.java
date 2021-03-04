@@ -5,12 +5,13 @@
 
 package io.opentelemetry.instrumentation.awssdk.v2_2;
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT;
+import static io.opentelemetry.api.trace.SpanKind.CLIENT;
 
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator;
-import io.opentelemetry.extension.trace.propagation.AwsXrayPropagator;
+import io.opentelemetry.context.propagation.TextMapSetter;
+import io.opentelemetry.extension.aws.AwsXrayPropagator;
 import io.opentelemetry.instrumentation.api.tracer.HttpClientTracer;
 import java.net.URI;
 import software.amazon.awssdk.core.interceptor.ExecutionAttributes;
@@ -22,10 +23,8 @@ import software.amazon.awssdk.http.SdkHttpResponse;
 final class AwsSdkHttpClientTracer
     extends HttpClientTracer<SdkHttpRequest, SdkHttpRequest.Builder, SdkHttpResponse> {
 
-  private static final AwsSdkHttpClientTracer TRACER = new AwsSdkHttpClientTracer();
-
-  static AwsSdkHttpClientTracer tracer() {
-    return TRACER;
+  AwsSdkHttpClientTracer(OpenTelemetry openTelemetry) {
+    super(openTelemetry);
   }
 
   public Context startSpan(Context parentContext, ExecutionAttributes attributes) {
@@ -65,7 +64,7 @@ final class AwsSdkHttpClientTracer
   }
 
   @Override
-  protected TextMapPropagator.Setter<SdkHttpRequest.Builder> getSetter() {
+  protected TextMapSetter<SdkHttpRequest.Builder> getSetter() {
     return AwsSdkInjectAdapter.INSTANCE;
   }
 
@@ -75,7 +74,7 @@ final class AwsSdkHttpClientTracer
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.aws-sdk";
+    return "io.opentelemetry.javaagent.aws-sdk-2.2";
   }
 
   /** This method is overridden to allow other classes in this package to call it. */

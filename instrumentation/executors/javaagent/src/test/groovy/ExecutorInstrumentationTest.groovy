@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import static io.opentelemetry.instrumentation.test.utils.TraceUtils.basicSpan
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.runUnderTrace
 
-import io.opentelemetry.instrumentation.test.AgentTestRunner
-import io.opentelemetry.sdk.trace.data.SpanData
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.ArrayBlockingQueue
@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import spock.lang.Shared
 
-class ExecutorInstrumentationTest extends AgentTestRunner {
+class ExecutorInstrumentationTest extends AgentInstrumentationSpecification {
 
   @Shared
   def executeRunnable = { e, c -> e.execute((Runnable) c) }
@@ -72,15 +72,13 @@ class ExecutorInstrumentationTest extends AgentTestRunner {
       }
     }.run()
 
-    TEST_WRITER.waitForTraces(1)
-    List<SpanData> trace = TEST_WRITER.traces[0]
-
     expect:
-    TEST_WRITER.traces.size() == 1
-    trace.size() == 2
-    trace.get(0).name == "parent"
-    trace.get(1).name == "asyncChild"
-    trace.get(1).parentSpanId == trace.get(0).spanId
+    assertTraces(1) {
+      trace(0, 2) {
+        basicSpan(it, 0, "parent")
+        basicSpan(it, 1, "asyncChild", span(0))
+      }
+    }
 
     cleanup:
     if (pool?.hasProperty("shutdown")) {
@@ -153,15 +151,13 @@ class ExecutorInstrumentationTest extends AgentTestRunner {
     child.unblock()
     child.waitForCompletion()
 
-    TEST_WRITER.waitForTraces(1)
-    List<SpanData> trace = TEST_WRITER.traces[0]
-
     expect:
-    TEST_WRITER.traces.size() == 1
-    trace.size() == 2
-    trace.get(0).name == "parent"
-    trace.get(1).name == "asyncChild"
-    trace.get(1).parentSpanId == trace.get(0).spanId
+    assertTraces(1) {
+      trace(0, 2) {
+        basicSpan(it, 0, "parent")
+        basicSpan(it, 1, "asyncChild", span(0))
+      }
+    }
 
     cleanup:
     pool?.shutdown()
@@ -216,10 +212,9 @@ class ExecutorInstrumentationTest extends AgentTestRunner {
       }
     }.run()
 
-    TEST_WRITER.waitForTraces(1)
 
     expect:
-    TEST_WRITER.traces.size() == 1
+    waitForTraces(1).size() == 1
 
     where:
     name                | method           | poolImpl

@@ -3,25 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
-import static io.opentelemetry.api.trace.Span.Kind.INTERNAL
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.INTERNAL
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.runUnderTrace
 
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
 import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import spring.jpa.JpaCustomer
 import spring.jpa.JpaCustomerRepository
 import spring.jpa.JpaPersistenceConfig
 
-class SpringJpaTest extends AgentTestRunner {
+class SpringJpaTest extends AgentInstrumentationSpecification {
   def "test object method"() {
     setup:
     def context = new AnnotationConfigApplicationContext(JpaPersistenceConfig)
     def repo = context.getBean(JpaCustomerRepository)
 
     // when Spring JPA sets up, it issues metadata queries -- clear those traces
-    TEST_WRITER.clear()
+    clearExportedData()
 
     when:
     runUnderTrace("toString test") {
@@ -47,7 +47,7 @@ class SpringJpaTest extends AgentTestRunner {
     def repo = context.getBean(JpaCustomerRepository)
 
     // when Spring JPA sets up, it issues metadata queries -- clear those traces
-    TEST_WRITER.clear()
+    clearExportedData()
 
     setup:
     def customer = new JpaCustomer("Bob", "Anonymous")
@@ -73,13 +73,15 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
+            "${SemanticAttributes.DB_OPERATION.key}" "SELECT"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
       }
     }
-    TEST_WRITER.clear()
+    clearExportedData()
 
     when:
     repo.save(customer) // insert
@@ -104,13 +106,15 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^insert /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^insert /
+            "${SemanticAttributes.DB_OPERATION.key}" "INSERT"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
       }
     }
-    TEST_WRITER.clear()
+    clearExportedData()
 
     when:
     customer.firstName = "Bill"
@@ -135,8 +139,10 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
+            "${SemanticAttributes.DB_OPERATION.key}" "SELECT"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
         span(2) { // update
@@ -147,13 +153,15 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^update /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^update /
+            "${SemanticAttributes.DB_OPERATION.key}" "UPDATE"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
       }
     }
-    TEST_WRITER.clear()
+    clearExportedData()
 
     when:
     customer = repo.findByLastName("Anonymous")[0] // select
@@ -176,13 +184,15 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
+            "${SemanticAttributes.DB_OPERATION.key}" "SELECT"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
       }
     }
-    TEST_WRITER.clear()
+    clearExportedData()
 
     when:
     repo.delete(customer) // delete
@@ -205,8 +215,10 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^select /
+            "${SemanticAttributes.DB_OPERATION.key}" "SELECT"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
         span(2) { // delete
@@ -217,12 +229,13 @@ class SpringJpaTest extends AgentTestRunner {
             "${SemanticAttributes.DB_SYSTEM.key}" "hsqldb"
             "${SemanticAttributes.DB_NAME.key}" "test"
             "${SemanticAttributes.DB_USER.key}" "sa"
-            "${SemanticAttributes.DB_STATEMENT.key}" ~/^delete /
             "${SemanticAttributes.DB_CONNECTION_STRING.key}" "hsqldb:mem:"
+            "${SemanticAttributes.DB_STATEMENT.key}" ~/^delete /
+            "${SemanticAttributes.DB_OPERATION.key}" "DELETE"
+            "${SemanticAttributes.DB_SQL_TABLE.key}" "JpaCustomer"
           }
         }
       }
     }
-    TEST_WRITER.clear()
   }
 }

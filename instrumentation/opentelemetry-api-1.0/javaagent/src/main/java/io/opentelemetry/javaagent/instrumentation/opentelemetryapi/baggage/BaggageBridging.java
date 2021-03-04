@@ -12,23 +12,26 @@ import application.io.opentelemetry.api.baggage.BaggageEntryMetadata;
 public final class BaggageBridging {
 
   public static Baggage toApplication(io.opentelemetry.api.baggage.Baggage agentBaggage) {
-    BaggageBuilder applicationBaggageBuilder = Baggage.builder().setNoParent();
+    BaggageBuilder applicationBaggageBuilder = Baggage.builder();
     agentBaggage.forEach(
-        (key, value, metadata) ->
+        (key, entry) ->
             applicationBaggageBuilder.put(
-                key, value, BaggageEntryMetadata.create(metadata.getValue())));
+                key,
+                entry.getValue(),
+                BaggageEntryMetadata.create(entry.getMetadata().getValue())));
     return applicationBaggageBuilder.build();
   }
 
   public static io.opentelemetry.api.baggage.Baggage toAgent(Baggage applicationBaggage) {
     io.opentelemetry.api.baggage.BaggageBuilder agentBaggageBuilder =
-        io.opentelemetry.api.baggage.Baggage.builder().setNoParent();
+        io.opentelemetry.api.baggage.Baggage.builder();
     applicationBaggage.forEach(
-        (key, value, metadata) ->
+        (key, entry) ->
             agentBaggageBuilder.put(
                 key,
-                value,
-                io.opentelemetry.api.baggage.BaggageEntryMetadata.create(metadata.getValue())));
+                entry.getValue(),
+                io.opentelemetry.api.baggage.BaggageEntryMetadata.create(
+                    entry.getMetadata().getValue())));
     return agentBaggageBuilder.build();
   }
 

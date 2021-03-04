@@ -20,28 +20,40 @@ public final class NetPeerUtils {
 
   public static final NetPeerUtils INSTANCE = new NetPeerUtils(Config.get());
 
-  private final Map<String, String> endpointPeerServiceMapping;
+  private final Map<String, String> peerServiceMapping;
 
   // visible for testing
   NetPeerUtils(Config config) {
-    this.endpointPeerServiceMapping =
-        Collections.unmodifiableMap(config.getMapProperty("otel.endpoint.peer.service.mapping"));
+    this.peerServiceMapping =
+        Collections.unmodifiableMap(
+            config.getMapProperty("otel.instrumentation.common.peer-service-mapping"));
   }
 
   public void setNetPeer(Span span, @Nullable InetSocketAddress remoteConnection) {
+    setNetPeer(span::setAttribute, remoteConnection);
+  }
+
+  public void setNetPeer(SpanBuilder span, @Nullable InetSocketAddress remoteConnection) {
+    setNetPeer(span::setAttribute, remoteConnection);
+  }
+
+  public void setNetPeer(SpanAttributeSetter span, @Nullable InetSocketAddress remoteConnection) {
     if (remoteConnection != null) {
       InetAddress remoteAddress = remoteConnection.getAddress();
       if (remoteAddress != null) {
-        setNetPeer(span, remoteAddress, remoteConnection.getPort());
+        setNetPeer(
+            span,
+            remoteAddress.getHostName(),
+            remoteAddress.getHostAddress(),
+            remoteConnection.getPort());
       } else {
         // Failed DNS lookup, the host string is the name.
-        setNetPeer(
-            span::setAttribute, remoteConnection.getHostString(), null, remoteConnection.getPort());
+        setNetPeer(span, remoteConnection.getHostString(), null, remoteConnection.getPort());
       }
     }
   }
 
-  public void setNetPeer(Span span, InetAddress remoteAddress, int port) {
+  public void setNetPeer(SpanBuilder span, InetAddress remoteAddress, int port) {
     setNetPeer(
         span::setAttribute, remoteAddress.getHostName(), remoteAddress.getHostAddress(), port);
   }
@@ -72,9 +84,9 @@ public final class NetPeerUtils {
       span.setAttribute(SemanticAttributes.NET_PEER_IP, peerIp);
     }
 
-    String peerService = mapToPeer(peerName);
+    String peerService = mapToPeerService(peerName);
     if (peerService == null) {
-      peerService = mapToPeer(peerIp);
+      peerService = mapToPeerService(peerIp);
     }
     if (peerService != null) {
       span.setAttribute(SemanticAttributes.PEER_SERVICE, peerService);
@@ -84,12 +96,12 @@ public final class NetPeerUtils {
     }
   }
 
-  private String mapToPeer(String endpoint) {
+  private String mapToPeerService(String endpoint) {
     if (endpoint == null) {
       return null;
     }
 
-    return endpointPeerServiceMapping.get(endpoint);
+    return peerServiceMapping.get(endpoint);
   }
 
   /**

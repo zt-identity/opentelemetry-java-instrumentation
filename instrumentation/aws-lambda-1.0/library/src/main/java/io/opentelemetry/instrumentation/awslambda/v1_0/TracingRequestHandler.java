@@ -8,11 +8,10 @@ package io.opentelemetry.instrumentation.awslambda.v1_0;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Span.Kind;
-import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -24,38 +23,39 @@ import java.util.concurrent.TimeUnit;
  */
 public abstract class TracingRequestHandler<I, O> implements RequestHandler<I, O> {
 
-  private static final long DEFAULT_FLUSH_TIMEOUT_SECONDS = 1;
+  protected static final Duration DEFAULT_FLUSH_TIMEOUT = Duration.ofSeconds(1);
 
   private final AwsLambdaTracer tracer;
-  private final long flushTimeout;
+  private final OpenTelemetrySdk openTelemetrySdk;
+  private final long flushTimeoutNanos;
 
-  /** Creates a new {@link TracingRequestHandler} which traces using the default {@link Tracer}. */
-  protected TracingRequestHandler(long flushTimeout) {
-    this.tracer = new AwsLambdaTracer();
-    this.flushTimeout = flushTimeout;
-  }
-
-  /** Creates a new {@link TracingRequestHandler} which traces using the default {@link Tracer}. */
-  protected TracingRequestHandler() {
-    this.tracer = new AwsLambdaTracer();
-    this.flushTimeout = DEFAULT_FLUSH_TIMEOUT_SECONDS;
+  /**
+   * Creates a new {@link TracingRequestHandler} which traces using the provided {@link
+   * OpenTelemetrySdk} and has a timeout of 1s when flushing at the end of an invocation.
+   */
+  protected TracingRequestHandler(OpenTelemetrySdk openTelemetrySdk) {
+    this(openTelemetrySdk, DEFAULT_FLUSH_TIMEOUT);
   }
 
   /**
-   * Creates a new {@link TracingRequestHandler} which traces using the specified {@link Tracer}.
+   * Creates a new {@link TracingRequestHandler} which traces using the provided {@link
+   * OpenTelemetrySdk} and has a timeout of {@code flushTimeout} when flushing at the end of an
+   * invocation.
    */
-  protected TracingRequestHandler(Tracer tracer) {
-    this.tracer = new AwsLambdaTracer(tracer);
-    this.flushTimeout = DEFAULT_FLUSH_TIMEOUT_SECONDS;
+  protected TracingRequestHandler(OpenTelemetrySdk openTelemetrySdk, Duration flushTimeout) {
+    this(openTelemetrySdk, flushTimeout, new AwsLambdaTracer(openTelemetrySdk));
   }
 
   /**
-   * Creates a new {@link TracingRequestHandler} which traces using the specified {@link
-   * AwsLambdaTracer}.
+   * Creates a new {@link TracingRequestHandler} which flushes the provided {@link
+   * OpenTelemetrySdk}, has a timeout of {@code flushTimeout} when flushing at the end of an
+   * invocation, and traces using the provided {@link AwsLambdaTracer}.
    */
-  protected TracingRequestHandler(AwsLambdaTracer tracer) {
+  protected TracingRequestHandler(
+      OpenTelemetrySdk openTelemetrySdk, Duration flushTimeout, AwsLambdaTracer tracer) {
+    this.openTelemetrySdk = openTelemetrySdk;
+    this.flushTimeoutNanos = flushTimeout.toNanos();
     this.tracer = tracer;
-    this.flushTimeout = DEFAULT_FLUSH_TIMEOUT_SECONDS;
   }
 
   private Map<String, String> getHeaders(I input) {
@@ -68,24 +68,26 @@ public abstract class TracingRequestHandler<I, O> implements RequestHandler<I, O
 
   @Override
   public final O handleRequest(I input, Context context) {
-    Span span = tracer.startSpan(context, Kind.SERVER, input, getHeaders(input));
+    io.opentelemetry.context.Context otelContext =
+        tracer.startSpan(context, SpanKind.SERVER, input, getHeaders(input));
     Throwable error = null;
-    try (Scope ignored = tracer.startScope(span)) {
+    try (Scope ignored = otelContext.makeCurrent()) {
       O output = doHandleRequest(input, context);
-      tracer.onOutput(span, output);
+      tracer.onOutput(otelContext, output);
       return output;
     } catch (Throwable t) {
       error = t;
       throw t;
     } finally {
       if (error != null) {
-        tracer.endExceptionally(span, error);
+        tracer.endExceptionally(otelContext, error);
       } else {
-        tracer.end(span);
+        tracer.end(otelContext);
       }
-      OpenTelemetrySdk.getGlobalTracerManagement()
+      openTelemetrySdk
+          .getSdkTracerProvider()
           .forceFlush()
-          .join(flushTimeout, TimeUnit.SECONDS);
+          .join(flushTimeoutNanos, TimeUnit.NANOSECONDS);
     }
   }
 

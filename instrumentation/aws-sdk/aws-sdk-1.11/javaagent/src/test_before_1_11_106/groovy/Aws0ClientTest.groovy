@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
 import static io.opentelemetry.instrumentation.test.server.http.TestHttpServer.httpServer
 import static io.opentelemetry.instrumentation.test.utils.PortUtils.UNUSABLE_PORT
 
@@ -25,13 +25,13 @@ import com.amazonaws.services.rds.model.DeleteOptionGroupRequest
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.S3ClientOptions
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
 import java.util.concurrent.atomic.AtomicReference
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 
-class Aws0ClientTest extends AgentTestRunner {
+class Aws0ClientTest extends AgentInstrumentationSpecification {
 
   private static final CREDENTIALS_PROVIDER_CHAIN = new AWSCredentialsProviderChain(
     new EnvironmentVariableCredentialsProvider(),
@@ -113,7 +113,7 @@ class Aws0ClientTest extends AgentTestRunner {
             "${SemanticAttributes.NET_PEER_NAME.key}" "localhost"
             "aws.service" { it.contains(service) }
             "aws.endpoint" "$server.address"
-            "aws.operation" "${operation}Request"
+            "aws.operation" "${operation}"
             "aws.agent" "java-aws-sdk"
             for (def addedTag : additionalAttributes) {
               "$addedTag.key" "$addedTag.value"
@@ -172,7 +172,7 @@ class Aws0ClientTest extends AgentTestRunner {
             "${SemanticAttributes.NET_PEER_NAME.key}" "localhost"
             "aws.service" { it.contains(service) }
             "aws.endpoint" "http://localhost:${UNUSABLE_PORT}"
-            "aws.operation" "${operation}Request"
+            "aws.operation" "${operation}"
             "aws.agent" "java-aws-sdk"
             for (def addedTag : additionalAttributes) {
               "$addedTag.key" "$addedTag.value"
@@ -219,7 +219,7 @@ class Aws0ClientTest extends AgentTestRunner {
             "${SemanticAttributes.NET_PEER_NAME.key}" "s3.amazonaws.com"
             "aws.service" "Amazon S3"
             "aws.endpoint" "https://s3.amazonaws.com"
-            "aws.operation" "GetObjectRequest"
+            "aws.operation" "GetObject"
             "aws.agent" "java-aws-sdk"
             "aws.bucket.name" "someBucket"
           }
@@ -266,7 +266,7 @@ class Aws0ClientTest extends AgentTestRunner {
             "${SemanticAttributes.NET_PEER_NAME.key}" "localhost"
             "aws.service" "Amazon S3"
             "aws.endpoint" "http://localhost:$server.address.port"
-            "aws.operation" "GetObjectRequest"
+            "aws.operation" "GetObject"
             "aws.agent" "java-aws-sdk"
             "aws.bucket.name" "someBucket"
           }

@@ -91,8 +91,8 @@ After writing a test or two, go back to the `library` package, make sure it has 
 `testing` submodule and add a test that inherits from the abstract test class. You should implement
 the method to initialize the client using the library's mechanism to register interceptors, perhaps
 a method like `registerInterceptor` or wrapping the result of a library factory when delegating. The
-test should implement the `InstrumentationTestRunner` trait for common setup logic. If the tests
-pass, library instrumentation is working OK.
+test should implement the `LibraryTestTrait` trait for common setup logic. If the tests pass,
+library instrumentation is working OK.
 
 ## Writing Java agent instrumentation
 
@@ -110,7 +110,7 @@ initializing the instrumentation library, so a user doesn't have to.
 With that written, let's add tests for the agent instrumentation. We basically want to ensure that
 the instrumentation works without the user knowing about the instrumentation. Add a test that extends
 the base class you wrote earlier, but in this, create a client using none of the APIs in our project,
-only the ones offered by the library. Implement the `AgentTestRunner` trait for common setup logic,
+only the ones offered by the library. Implement the `AgentTestTrait` trait for common setup logic,
 and try running. All the tests should pass for agent instrumentation too.
 
 Note that all the tests inside the `javaagent` module will be run using the shaded `-javaagent`
@@ -141,9 +141,9 @@ instrumentation ->
         ...
 ```
 
-### Java agent instrumentation gotchas
+## Java agent instrumentation gotchas
 
-#### Calling Java 8 default methods from advice
+### Calling Java 8 default methods from advice
 
 If you are instrumenting a pre-Java 8 library, then inlining Java 8 default method calls into that
 library will result in a `java.lang.VerifyError` at runtime, since Java 8 default method invocations
@@ -153,7 +153,7 @@ Because OpenTelemetry API has many common default methods (e.g. `Span.current()`
 the `javaagent-api` artifact has a class `Java8BytecodeBridge` which provides static methods
 for accessing these default methods from advice.
 
-#### Why hard code advice class names?
+### Why hard code advice class names?
 
 Implementations of `TypeInstrumentation` will often implement advice classes as static inner classes.
 These classes are referred to by name in the mappings from method descriptor to advice class,
@@ -177,7 +177,7 @@ Instrumentation modules are loaded by the agent's classloader, and this
 string concatenation is an optimization that prevents the actual advice class
 from being loaded.
 
-#### Instrumenting code that is not available as a maven dependency
+### Instrumenting code that is not available as a maven dependency
 
 If instrumented server or library jar isn't available from a maven repository you can create a
 module with stub classes that define only the methods that you need for writing the integration.

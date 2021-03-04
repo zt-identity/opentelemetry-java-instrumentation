@@ -7,53 +7,57 @@ package io.opentelemetry.instrumentation.awslambda.v1_0;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.SQSEvent;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
 public abstract class TracingSqsEventHandler extends TracingRequestHandler<SQSEvent, Void> {
 
   private final AwsLambdaMessageTracer tracer;
 
-  /** Creates a new {@link TracingRequestHandler} which traces using the default {@link Tracer}. */
-  protected TracingSqsEventHandler() {
-    this.tracer = new AwsLambdaMessageTracer();
+  /**
+   * Creates a new {@link TracingSqsEventHandler} which traces using the provided {@link
+   * OpenTelemetrySdk} and has a timeout of 1s when flushing at the end of an invocation.
+   */
+  protected TracingSqsEventHandler(OpenTelemetrySdk openTelemetrySdk) {
+    this(openTelemetrySdk, DEFAULT_FLUSH_TIMEOUT);
   }
 
   /**
-   * Creates a new {@link TracingRequestHandler} which traces using the specified {@link Tracer}.
+   * Creates a new {@link TracingSqsEventHandler} which traces using the provided {@link
+   * OpenTelemetrySdk} and has a timeout of {@code flushTimeout} when flushing at the end of an
+   * invocation.
    */
-  protected TracingSqsEventHandler(Tracer tracer) {
-    super(tracer);
-    this.tracer = new AwsLambdaMessageTracer(tracer);
+  protected TracingSqsEventHandler(OpenTelemetrySdk openTelemetrySdk, Duration flushTimeout) {
+    this(openTelemetrySdk, flushTimeout, new AwsLambdaMessageTracer(openTelemetrySdk));
   }
 
   /**
-   * Creates a new {@link TracingRequestHandler} which traces using the specified {@link
-   * AwsLambdaMessageTracer}.
+   * Creates a new {@link TracingSqsEventHandler} which flushes the provided {@link
+   * OpenTelemetrySdk}, has a timeout of {@code flushTimeout} when flushing at the end of an
+   * invocation, and traces using the provided {@link AwsLambdaTracer}.
    */
-  protected TracingSqsEventHandler(AwsLambdaMessageTracer tracer) {
+  protected TracingSqsEventHandler(
+      OpenTelemetrySdk openTelemetrySdk, Duration flushTimeout, AwsLambdaMessageTracer tracer) {
+    super(openTelemetrySdk, flushTimeout);
     this.tracer = tracer;
   }
 
   @Override
   public Void doHandleRequest(SQSEvent event, Context context) {
-    Span span = tracer.startSpan(context, event);
+    io.opentelemetry.context.Context otelContext = tracer.startSpan(event);
     Throwable error = null;
-    try (Scope ignored = tracer.startScope(span)) {
+    try (Scope ignored = otelContext.makeCurrent()) {
       handleEvent(event, context);
     } catch (Throwable t) {
       error = t;
       throw t;
     } finally {
       if (error != null) {
-        tracer.endExceptionally(span, error);
+        tracer.endExceptionally(otelContext, error);
       } else {
-        tracer.end(span);
+        tracer.end(otelContext);
       }
-      OpenTelemetrySdk.getGlobalTracerManagement().forceFlush().join(1, TimeUnit.SECONDS);
     }
     return null;
   }

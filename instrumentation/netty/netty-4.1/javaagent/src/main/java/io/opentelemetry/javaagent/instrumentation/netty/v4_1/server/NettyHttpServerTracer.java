@@ -11,9 +11,9 @@ import io.netty.channel.Channel;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator.Getter;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.instrumentation.api.tracer.HttpServerTracer;
-import io.opentelemetry.javaagent.instrumentation.netty.v4_1.AttributeKeys;
+import io.opentelemetry.instrumentation.netty.v4_1.AttributeKeys;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 
@@ -52,11 +52,11 @@ public class NettyHttpServerTracer
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.netty";
+    return "io.opentelemetry.javaagent.netty-4.1";
   }
 
   @Override
-  protected Getter<HttpRequest> getGetter() {
+  protected TextMapGetter<HttpRequest> getGetter() {
     return NettyRequestExtractAdapter.GETTER;
   }
 

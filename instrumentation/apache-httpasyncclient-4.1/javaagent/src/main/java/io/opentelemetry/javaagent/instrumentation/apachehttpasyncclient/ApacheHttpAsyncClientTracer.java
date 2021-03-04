@@ -5,12 +5,12 @@
 
 package io.opentelemetry.javaagent.instrumentation.apachehttpasyncclient;
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT;
+import static io.opentelemetry.api.trace.SpanKind.CLIENT;
 import static io.opentelemetry.javaagent.instrumentation.apachehttpasyncclient.HttpHeadersInjectAdapter.SETTER;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator.Setter;
+import io.opentelemetry.context.propagation.TextMapSetter;
 import io.opentelemetry.instrumentation.api.tracer.HttpClientTracer;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -89,7 +89,7 @@ public class ApacheHttpAsyncClientTracer
   }
 
   @Override
-  protected Setter<HttpRequest> getSetter() {
+  protected TextMapSetter<HttpRequest> getSetter() {
     return SETTER;
   }
 
@@ -100,12 +100,19 @@ public class ApacheHttpAsyncClientTracer
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.apache-httpasyncclient";
+    return "io.opentelemetry.javaagent.apache-httpasyncclient-4.1";
   }
 
+  /** This method is overridden to allow other classes in this package to call it. */
   @Override
   public String spanNameForRequest(HttpRequest httpRequest) {
     return super.spanNameForRequest(httpRequest);
+  }
+
+  /** This method is overridden to allow other classes in this package to call it. */
+  @Override
+  protected void inject(Context context, HttpRequest httpRequest) {
+    super.inject(context, httpRequest);
   }
 
   /** This method is overridden to allow other classes in this package to call it. */

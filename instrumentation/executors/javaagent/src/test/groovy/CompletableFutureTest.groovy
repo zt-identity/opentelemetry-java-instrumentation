@@ -4,10 +4,10 @@
  */
 
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.basicSpan
+import static io.opentelemetry.instrumentation.test.utils.TraceUtils.runInternalSpan
 import static io.opentelemetry.instrumentation.test.utils.TraceUtils.runUnderTrace
 
-import io.opentelemetry.instrumentation.test.AgentTestRunner
-import io.opentelemetry.sdk.trace.data.SpanData
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ThreadPoolExecutor
@@ -17,7 +17,7 @@ import java.util.function.Supplier
 import spock.lang.Requires
 
 @Requires({ javaVersion >= 1.8 })
-class CompletableFutureTest extends AgentTestRunner {
+class CompletableFutureTest extends AgentInstrumentationSpecification {
 
   def "CompletableFuture test"() {
     setup:
@@ -26,7 +26,7 @@ class CompletableFutureTest extends AgentTestRunner {
     def supplier = new Supplier<String>() {
       @Override
       String get() {
-        getTestTracer().spanBuilder("supplier").startSpan().end()
+        runInternalSpan("supplier")
         sleep(1000)
         return "a"
       }
@@ -35,7 +35,7 @@ class CompletableFutureTest extends AgentTestRunner {
     def function = new Function<String, String>() {
       @Override
       String apply(String s) {
-        getTestTracer().spanBuilder("function").startSpan().end()
+        runInternalSpan("function")
         return s + "c"
       }
     }
@@ -52,21 +52,17 @@ class CompletableFutureTest extends AgentTestRunner {
       }
     }.get()
 
-    TEST_WRITER.waitForTraces(1)
-    List<SpanData> trace = TEST_WRITER.traces[0]
-
     expect:
     result == "abc"
 
-    TEST_WRITER.traces.size() == 1
-    trace.size() == 4
-    trace.get(0).name == "parent"
-    trace.get(1).name == "supplier"
-    trace.get(1).parentSpanId == trace.get(0).spanId
-    trace.get(2).name == "appendingSupplier"
-    trace.get(2).parentSpanId == trace.get(0).spanId
-    trace.get(3).name == "function"
-    trace.get(3).parentSpanId == trace.get(0).spanId
+    assertTraces(1) {
+      trace(0, 4) {
+        basicSpan(it, 0, "parent")
+        basicSpan(it, 1, "supplier", span(0))
+        basicSpan(it, 2, "appendingSupplier", span(0))
+        basicSpan(it, 3, "function", span(0))
+      }
+    }
 
     cleanup:
     pool?.shutdown()
@@ -237,7 +233,7 @@ class CompletableFutureTest extends AgentTestRunner {
 
     @Override
     String get() {
-      getTestTracer().spanBuilder("appendingSupplier").startSpan().end()
+      runInternalSpan("appendingSupplier")
       return letter + "b"
     }
   }

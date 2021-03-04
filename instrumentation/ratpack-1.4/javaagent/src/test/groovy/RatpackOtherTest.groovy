@@ -3,19 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.INTERNAL
-import static io.opentelemetry.api.trace.Span.Kind.SERVER
+import static io.opentelemetry.api.trace.SpanKind.INTERNAL
+import static io.opentelemetry.api.trace.SpanKind.SERVER
 
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.instrumentation.test.utils.OkHttpUtils
+import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import ratpack.groovy.test.embed.GroovyEmbeddedApp
 import ratpack.path.PathBinding
 
-class RatpackOtherTest extends AgentTestRunner {
+class RatpackOtherTest extends AgentInstrumentationSpecification {
 
   OkHttpClient client = OkHttpUtils.client()
 
@@ -80,7 +80,7 @@ class RatpackOtherTest extends AgentTestRunner {
             "${SemanticAttributes.HTTP_URL.key}" "${app.address.resolve(path)}"
             "${SemanticAttributes.HTTP_METHOD.key}" "GET"
             "${SemanticAttributes.HTTP_STATUS_CODE.key}" 200
-            "${SemanticAttributes.HTTP_FLAVOR.key}" "HTTP/1.1"
+            "${SemanticAttributes.HTTP_FLAVOR.key}" "1.1"
             "${SemanticAttributes.HTTP_USER_AGENT.key}" String
             "${SemanticAttributes.HTTP_CLIENT_IP.key}" "127.0.0.1"
           }

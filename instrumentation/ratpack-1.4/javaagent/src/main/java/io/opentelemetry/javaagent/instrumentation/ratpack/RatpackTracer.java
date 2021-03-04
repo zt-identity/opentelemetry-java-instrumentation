@@ -16,7 +16,7 @@ public class RatpackTracer extends BaseTracer {
     return TRACER;
   }
 
-  public Span onContext(Span span, Context ctx) {
+  public void onContext(io.opentelemetry.context.Context otelContext, Context ctx) {
     String description = ctx.getPathBinding().getDescription();
     if (description == null || description.isEmpty()) {
       description = "/";
@@ -24,14 +24,12 @@ public class RatpackTracer extends BaseTracer {
       description = "/" + description;
     }
 
-    span.updateName(description);
-
-    return span;
+    Span.fromContext(otelContext).updateName(description);
   }
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.ratpack";
+    return "io.opentelemetry.javaagent.ratpack-1.4";
   }
 
   @Override

@@ -83,6 +83,9 @@ abstract class AppServerTest extends SmokeTest {
     and: "Client and server spans for the remote call"
     traces.countFilteredAttributes("http.url", "http://localhost:8080/app/headers") == 2
 
+    and: "Number of spans with http protocol version"
+    traces.countFilteredAttributes("http.flavor", "1.1") == 3
+
     and: "Number of spans tagged with current otel library version"
     traces.countFilteredResourceAttributes("telemetry.auto.version", currentAgentVersion) == 3
 
@@ -91,6 +94,9 @@ abstract class AppServerTest extends SmokeTest {
       .map { it.stringValue }
       .findAny()
       .isPresent()
+
+    cleanup:
+    response?.close()
 
     where:
     [appServer, jdk] << getTestParams()
@@ -132,6 +138,9 @@ abstract class AppServerTest extends SmokeTest {
       .findAny()
       .isPresent()
 
+    cleanup:
+    response?.close()
+
     where:
     [appServer, jdk] << getTestParams()
   }
@@ -171,6 +180,9 @@ abstract class AppServerTest extends SmokeTest {
       .findAny()
       .isPresent()
 
+    cleanup:
+    response?.close()
+
     where:
     [appServer, jdk] << getTestParams()
   }
@@ -203,6 +215,9 @@ abstract class AppServerTest extends SmokeTest {
     and: "The span for the initial web request"
     traces.countFilteredAttributes("http.url", url) == 1
 
+    and: "Number of spans with http protocol version"
+    traces.countFilteredAttributes("http.flavor", "1.1") == 1
+
     and: "Number of spans tagged with current otel library version"
     traces.countFilteredResourceAttributes("telemetry.auto.version", currentAgentVersion) == traces.countSpans()
 
@@ -211,6 +226,9 @@ abstract class AppServerTest extends SmokeTest {
       .map { it.stringValue }
       .findAny()
       .isPresent()
+
+    cleanup:
+    response?.close()
 
     where:
     [appServer, jdk] << getTestParams()
@@ -256,6 +274,9 @@ abstract class AppServerTest extends SmokeTest {
       .findAny()
       .isPresent()
 
+    cleanup:
+    response?.close()
+
     where:
     [appServer, jdk] << getTestParams()
   }
@@ -286,6 +307,9 @@ abstract class AppServerTest extends SmokeTest {
     and: "The span for the initial web request"
     traces.countFilteredAttributes("http.url", url) == 1
 
+    and: "Number of spans with http protocol version"
+    traces.countFilteredAttributes("http.flavor", "1.1") == 1
+
     and: "Number of spans tagged with current otel library version"
     traces.countFilteredResourceAttributes("telemetry.auto.version", currentAgentVersion) == traces.countSpans()
 
@@ -294,6 +318,9 @@ abstract class AppServerTest extends SmokeTest {
       .map { it.stringValue }
       .findAny()
       .isPresent()
+
+    cleanup:
+    response?.close()
 
     where:
     [appServer, jdk] << getTestParams()
@@ -332,6 +359,9 @@ abstract class AppServerTest extends SmokeTest {
     and: "Client and server spans for the remote call"
     traces.countFilteredAttributes("http.url", "http://localhost:8080/app/headers") == 2
 
+    and: "Number of spans with http protocol version"
+    traces.countFilteredAttributes("http.flavor", "1.1") == 3
+
     and: "Number of spans tagged with current otel library version"
     traces.countFilteredResourceAttributes("telemetry.auto.version", currentAgentVersion) == 3
 
@@ -341,11 +371,26 @@ abstract class AppServerTest extends SmokeTest {
       .findAny()
       .isPresent()
 
+    cleanup:
+    response?.close()
+
     where:
     [appServer, jdk] << getTestParams()
   }
 
-  protected abstract String getSpanName(String path);
+  protected String getSpanName(String path) {
+    switch (path) {
+      case "/app/greeting":
+      case "/app/headers":
+      case "/app/exception":
+      case "/app/asyncgreeting":
+        return path
+      case "/app/hello.txt":
+      case "/app/file-that-does-not-exist":
+        return "/app/*"
+    }
+    return "HTTP GET"
+  }
 
   protected List<List<Object>> getTestParams() {
     return [

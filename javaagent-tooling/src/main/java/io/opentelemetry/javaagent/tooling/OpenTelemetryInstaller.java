@@ -57,36 +57,10 @@ public class OpenTelemetryInstaller implements ComponentInstaller {
         (key, value) -> {
           String keyStr = (String) key;
           if (!environmentProperties.containsKey(key)
-              && !keyStr.equals("otel.endpoint.peer.service.mapping")
               && keyStr.startsWith("otel.")
               && !keyStr.startsWith("otel.instrumentation")) {
             System.setProperty(keyStr, (String) value);
           }
         });
-
-    // Reread after our calls to setProperty to determine whether we need to enforce agent defaults.
-    Properties environmentPropertiesWithCopies =
-        new ConfigBuilder()
-            .readEnvironmentVariables()
-            .readSystemProperties()
-            .build()
-            .asJavaProperties();
-
-    // Agent has different defaults than SDK
-    if (!environmentPropertiesWithCopies.containsKey("otel.propagators")) {
-      System.setProperty("otel.propagators", "tracecontext,baggage");
-    }
-    String traceExporter = environmentPropertiesWithCopies.getProperty("otel.trace.exporter");
-    if (traceExporter == null) {
-      System.setProperty("otel.trace.exporter", "otlp");
-    } else if (traceExporter.equals("none")) {
-      System.clearProperty("otel.trace.exporter");
-    }
-    String metricExporter = environmentPropertiesWithCopies.getProperty("otel.metrics.exporter");
-    if (metricExporter == null) {
-      System.setProperty("otel.metrics.exporter", "otlp");
-    } else if (metricExporter.equals("none")) {
-      System.clearProperty("otel.metrics.exporter");
-    }
   }
 }

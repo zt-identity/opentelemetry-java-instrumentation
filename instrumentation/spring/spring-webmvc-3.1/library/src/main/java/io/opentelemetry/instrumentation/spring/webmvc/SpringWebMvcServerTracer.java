@@ -7,7 +7,7 @@ package io.opentelemetry.instrumentation.spring.webmvc;
 
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator.Getter;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.instrumentation.api.tracer.HttpServerTracer;
 import io.opentelemetry.instrumentation.servlet.HttpServletRequestGetter;
 import javax.servlet.http.HttpServletRequest;
@@ -32,7 +32,7 @@ class SpringWebMvcServerTracer
   }
 
   @Override
-  protected Getter<HttpServletRequest> getGetter() {
+  protected TextMapGetter<HttpServletRequest> getGetter() {
     return HttpServletRequestGetter.GETTER;
   }
 
@@ -74,6 +74,6 @@ class SpringWebMvcServerTracer
 
   @Override
   protected String getInstrumentationName() {
-    return "io.opentelemetry.javaagent.spring-webmvc";
+    return "io.opentelemetry.javaagent.spring-webmvc-3.1";
   }
 }

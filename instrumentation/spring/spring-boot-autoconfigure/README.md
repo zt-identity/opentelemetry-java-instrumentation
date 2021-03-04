@@ -200,7 +200,7 @@ public class TracedClass {
         currentSpan.setAttribute("isTestAttribute", true);
     }
 
-    @WithSpan(kind=Span.Kind.CLIENT)
+    @WithSpan(kind=SpanKind.CLIENT)
     public void tracedClientSpan() {
     }
 }
@@ -226,7 +226,7 @@ The traces below were exported using Zipkin.
       },
       "tags":{
          "http.client_ip":"0:0:0:0:0:0:0:1",
-         "http.flavor":"HTTP/1.1",
+         "http.flavor":"1.1",
          "http.method":"GET",
          "http.status_code":"200",
          "http.url":"/spring-webmvc/sample",
@@ -346,7 +346,7 @@ The traces below were exported using Zipkin.
       }
       "tags":{
          "test.type":"@WithSpan annotation",
-         "test.case":"@WithSpan(kind=Span.Kind.Client)",
+         "test.case":"@WithSpan(kind=SpanKind.Client)",
       }
    },
 ]

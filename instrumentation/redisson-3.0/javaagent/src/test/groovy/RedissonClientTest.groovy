@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import static io.opentelemetry.api.trace.Span.Kind.CLIENT
+import static io.opentelemetry.api.trace.SpanKind.CLIENT
 import static java.util.regex.Pattern.compile
 import static java.util.regex.Pattern.quote
 
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
-import io.opentelemetry.instrumentation.test.AgentTestRunner
+import io.opentelemetry.instrumentation.test.AgentInstrumentationSpecification
 import io.opentelemetry.instrumentation.test.utils.PortUtils
+import io.opentelemetry.semconv.trace.attributes.SemanticAttributes
 import org.redisson.Redisson
 import org.redisson.api.RAtomicLong
 import org.redisson.api.RBatch
@@ -21,10 +21,11 @@ import org.redisson.api.RScoredSortedSet
 import org.redisson.api.RSet
 import org.redisson.api.RedissonClient
 import org.redisson.config.Config
+import org.redisson.config.SingleServerConfig
 import redis.embedded.RedisServer
 import spock.lang.Shared
 
-class RedissonClientTest extends AgentTestRunner {
+class RedissonClientTest extends AgentInstrumentationSpecification {
 
   @Shared
   int port = PortUtils.randomOpenPort()
@@ -57,9 +58,12 @@ class RedissonClientTest extends AgentTestRunner {
 
   def setup() {
     Config config = new Config()
-    config.useSingleServer().setAddress(address)
+    SingleServerConfig singleServerConfig = config.useSingleServer()
+    singleServerConfig.setAddress(address)
+    // disable connection ping if it exists
+    singleServerConfig.metaClass.getMetaMethod("setPingConnectionInterval", int)?.invoke(singleServerConfig, 0)
     redisson = Redisson.create(config)
-    TEST_WRITER.clear()
+    clearExportedData()
   }
 
   def "test string command"() {

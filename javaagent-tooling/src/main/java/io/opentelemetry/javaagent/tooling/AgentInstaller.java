@@ -11,12 +11,11 @@ import static net.bytebuddy.matcher.ElementMatchers.any;
 import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 import static net.bytebuddy.matcher.ElementMatchers.none;
 
-import com.google.common.collect.Iterables;
 import io.opentelemetry.instrumentation.api.config.Config;
-import io.opentelemetry.instrumentation.api.internal.BootstrapPackagePrefixesHolder;
 import io.opentelemetry.javaagent.bootstrap.AgentClassLoader;
 import io.opentelemetry.javaagent.bootstrap.AgentInitializer;
 import io.opentelemetry.javaagent.instrumentation.api.SafeServiceLoader;
+import io.opentelemetry.javaagent.instrumentation.api.internal.BootstrapPackagePrefixesHolder;
 import io.opentelemetry.javaagent.spi.BootstrapPackagesProvider;
 import io.opentelemetry.javaagent.spi.ByteBuddyAgentCustomizer;
 import io.opentelemetry.javaagent.spi.ComponentInstaller;
@@ -35,6 +34,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.type.TypeDefinition;
@@ -46,7 +47,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class AgentInstaller {
-  private static final Logger log = LoggerFactory.getLogger(AgentInstaller.class);
+
+  private static final Logger log;
 
   private static final String JAVAAGENT_ENABLED_CONFIG = "otel.javaagent.enabled";
   private static final String EXCLUDED_CLASSES_CONFIG = "otel.javaagent.exclude-classes";
@@ -54,8 +56,8 @@ public class AgentInstaller {
   // We set this system property when running the agent with unit tests to allow verifying that we
   // don't ignore libraries that we actually attempt to instrument. It means either the list is
   // wrong or a type matcher is.
-  private static final String DISABLE_GLOBAL_LIBRARY_IGNORES_FOR_TEST =
-      "internal.testing.disable.global.library.ignores";
+  private static final String ADDITIONAL_LIBRARY_IGNORES_ENABLED =
+      "otel.javaagent.testing.additional-library-ignores.enabled";
 
   private static final Map<String, List<Runnable>> CLASS_LOAD_CALLBACKS = new HashMap<>();
   private static volatile Instrumentation INSTRUMENTATION;
@@ -65,6 +67,9 @@ public class AgentInstaller {
   }
 
   static {
+    LoggingConfigurer.configureLogger();
+    log = LoggerFactory.getLogger(AgentInstaller.class);
+
     addByteBuddyRawSetting();
     BootstrapPackagePrefixesHolder.setBoostrapPackagePrefixes(loadBootstrapPackagePrefixes());
     // WeakMap is used by other classes below, so we need to register the provider first.
@@ -122,7 +127,7 @@ public class AgentInstaller {
     ignoredAgentBuilder =
         ignoredAgentBuilder.or(
             globalIgnoresMatcher(
-                Config.get().getBooleanProperty(DISABLE_GLOBAL_LIBRARY_IGNORES_FOR_TEST, false),
+                Config.get().getBooleanProperty(ADDITIONAL_LIBRARY_IGNORES_ENABLED, true),
                 ignoreMatcherProvider));
 
     ignoredAgentBuilder = ignoredAgentBuilder.or(matchesConfiguredExcludes());
@@ -320,7 +325,8 @@ public class AgentInstaller {
 
   static class TransformLoggingListener implements AgentBuilder.Listener {
 
-    private static final Logger log = LoggerFactory.getLogger(TransformLoggingListener.class);
+    private static final TransformSafeLogger log =
+        TransformSafeLogger.getLogger(TransformLoggingListener.class);
 
     @Override
     public void onError(
@@ -353,21 +359,15 @@ public class AgentInstaller {
         TypeDescription typeDescription,
         ClassLoader classLoader,
         JavaModule module,
-        boolean loaded) {
-      //      log.debug("onIgnored {}", typeDescription.getName());
-    }
+        boolean loaded) {}
 
     @Override
     public void onComplete(
-        String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {
-      // log.debug("onComplete {}", typeName);
-    }
+        String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {}
 
     @Override
     public void onDiscovery(
-        String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {
-      // log.debug("onDiscovery {}", typeName);
-    }
+        String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {}
   }
 
   /**
@@ -490,8 +490,15 @@ public class AgentInstaller {
     @Override
     public Iterable<Iterable<Class<?>>> resolve(Instrumentation instrumentation) {
       // filter out our agent classes and injected helper classes
-      return Iterables.transform(
-          delegate.resolve(instrumentation), i -> Iterables.filter(i, c -> !isIgnored(c)));
+      return () -> streamOf(delegate.resolve(instrumentation)).map(this::filterClasses).iterator();
+    }
+
+    private Iterable<Class<?>> filterClasses(Iterable<Class<?>> classes) {
+      return () -> streamOf(classes).filter(c -> !isIgnored(c)).iterator();
+    }
+
+    private static <T> Stream<T> streamOf(Iterable<T> iterable) {
+      return StreamSupport.stream(iterable.spliterator(), false);
     }
 
     private static boolean isIgnored(Class<?> c) {

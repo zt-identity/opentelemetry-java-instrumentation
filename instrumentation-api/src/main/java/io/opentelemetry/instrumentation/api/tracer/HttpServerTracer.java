@@ -5,13 +5,14 @@
 
 package io.opentelemetry.instrumentation.api.tracer;
 
-import static io.opentelemetry.api.trace.Span.Kind.SERVER;
+import static io.opentelemetry.api.trace.SpanKind.SERVER;
 
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes;
 import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
@@ -42,8 +43,19 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
     super();
   }
 
+  /**
+   * Prefer to pass in an OpenTelemetry instance, rather than just a Tracer, so you don't have to
+   * use the GlobalOpenTelemetry Propagator instance.
+   *
+   * @deprecated prefer to pass in an OpenTelemetry instance, instead.
+   */
+  @Deprecated
   public HttpServerTracer(Tracer tracer) {
     super(tracer);
+  }
+
+  public HttpServerTracer(OpenTelemetry openTelemetry) {
+    super(openTelemetry);
   }
 
   public Context startSpan(REQUEST request, CONNECTION connection, STORAGE storage, Method origin) {
@@ -82,8 +94,14 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
     onConnectionAndRequest(span, connection, request);
 
     Context context = withServerSpan(parentContext, span);
+    context = customizeContext(context, request);
     attachServerContext(context, storage);
 
+    return context;
+  }
+
+  /** Override in subclass to customize context that is returned by {@code startSpan}. */
+  protected Context customizeContext(Context context, REQUEST request) {
     return context;
   }
 
@@ -100,7 +118,7 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
   public void end(Context context, RESPONSE response, long timestamp) {
     Span span = Span.fromContext(context);
     setStatus(span, responseStatus(response));
-    endSpan(span, timestamp);
+    end(context, timestamp);
   }
 
   /**
@@ -132,12 +150,12 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
     } else {
       setStatus(span, responseStatus(response));
     }
-    endSpan(span, timestamp);
+    end(context, timestamp);
   }
 
   public Span getServerSpan(STORAGE storage) {
     Context attachedContext = getServerContext(storage);
-    return attachedContext == null ? null : getCurrentServerSpan(attachedContext);
+    return attachedContext == null ? null : ServerSpan.fromContextOrNull(attachedContext);
   }
 
   /**
@@ -183,6 +201,10 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
   protected void onConnectionAndRequest(Span span, CONNECTION connection, REQUEST request) {
     String flavor = flavor(connection, request);
     if (flavor != null) {
+      // remove HTTP/ prefix to comply with semantic conventions
+      if (flavor.startsWith("HTTP/")) {
+        flavor = flavor.substring("HTTP/".length());
+      }
       span.setAttribute(SemanticAttributes.HTTP_FLAVOR, flavor);
     }
     span.setAttribute(SemanticAttributes.HTTP_CLIENT_IP, clientIP(connection, request));
@@ -244,14 +266,6 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
     span.setStatus(HttpStatusConverter.statusFromHttpStatus(status));
   }
 
-  private static void endSpan(Span span, long timestamp) {
-    if (timestamp >= 0) {
-      span.end(timestamp, TimeUnit.NANOSECONDS);
-    } else {
-      span.end();
-    }
-  }
-
   @Nullable
   protected abstract Integer peerPort(CONNECTION connection);
 
@@ -260,7 +274,7 @@ public abstract class HttpServerTracer<REQUEST, RESPONSE, CONNECTION, STORAGE> e
 
   protected abstract String flavor(CONNECTION connection, REQUEST request);
 
-  protected abstract TextMapPropagator.Getter<REQUEST> getGetter();
+  protected abstract TextMapGetter<REQUEST> getGetter();
 
   protected abstract String url(REQUEST request);
 
